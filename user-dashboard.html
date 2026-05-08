@@ -47,21 +47,9 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a href="user-recommendations.html" class="nav-link">
-                        <i class="fas fa-robot"></i>
-                        <span data-i18n="recommendations">توصيات ذكية</span>
-                    </a>
-                </li>
-                <li class="nav-item">
                     <a href="user-complaints.html" class="nav-link">
                         <i class="fas fa-comment-dots"></i>
-                        <span data-i18n="complaints">الشكاوى والمقترحات</span>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="user-profile.html" class="nav-link">
-                        <i class="fas fa-user"></i>
-                        <span data-i18n="profile">الملف الشخصي</span>
+                        <span data-i18n="complaints">الشكاوى</span>
                     </a>
                 </li>
                 <li class="nav-item">
@@ -91,11 +79,11 @@
                         <span id="userPoints">0</span>
                         <span style="font-size: 0.8rem; margin-right: 5px;" data-i18n="points">نقطة</span>
                     </div>
-                    <div class="user-profile-header" onclick="location.href='user-profile.html'">
+                    <div class="user-profile-header" onclick="window.logout()">
                         <div class="user-avatar" id="userAvatar">م</div>
                         <div class="user-info-text">
                             <h4 id="userName" data-i18n="loading">جاري التحميل...</h4>
-                            <span data-i18n="active_member">عضو نشط</span>
+                            <span style="color: var(--error);" data-i18n="logout">تسجيل الخروج</span>
                         </div>
                     </div>
                 </div>
@@ -148,7 +136,7 @@
                 </div>
 
                 <!-- Charts & Recent Activity -->
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-bottom: 30px;" class="fade-in">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-bottom: 30px;" class="fade-in recent-activity-grid">
                     <div class="card">
                         <h3 style="margin-bottom: 20px;"><i class="fas fa-chart-line" style="color: var(--primary); margin-left: 10px;"></i><span data-i18n="weekly_activity">نشاطك خلال الأسبوع</span></h3>
                         <div class="chart-container">
