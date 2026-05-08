@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>توصيات ذكية | منصة الشباب والرياضة الذكية</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #0A66C2;
+            --primary-dark: #084a8f;
+            --primary-light: #e8f0fe;
+            --primary-glow: rgba(10, 102, 194, 0.2);
+            --secondary: #00a8ff;
+            --white: #ffffff;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            --shadow-glow: 0 0 30px rgba(10, 102, 194, 0.3);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 24px;
+            --transition-fast: 0.2s ease;
+            --transition-normal: 0.3s ease;
+            --sidebar-width: 280px;
+            --header-height: 70px;
+        }
+
+        [data-theme="dark"] {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --primary-light: #1e3a5f;
+            --primary-glow: rgba(59, 130, 246, 0.3);
+            --white: #1e293b;
+            --gray-50: #0f172a;
+            --gray-100: #1e293b;
+            --gray-200: #334155;
+            --gray-300: #475569;
+            --gray-400: #64748b;
+            --gray-500: #94a3b8;
+            --gray-600: #cbd5e1;
+            --gray-700: #e2e8f0;
+            --gray-800: #f1f5f9;
+            --gray-900: #f8fafc;
+        }
+
+        body {
+            font-family: 'Cairo', sans-serif;
+            background: var(--gray-50);
+            color: var(--gray-800);
+            transition: background var(--transition-normal);
+            overflow-x: hidden;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            position: fixed;
+            right: 0;
+            top: 0;
+            width: var(--sidebar-width);
+            height: 100vh;
+            background: var(--white);
+            box-shadow: var(--shadow-lg);
+            z-index: 1000;
+            transition: all var(--transition-normal);
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 25px;
+            text-align: center;
+            border-bottom: 2px solid var(--gray-100);
+        }
+
+        .sidebar-logo { width: 80px; height: 80px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px; overflow: hidden; border: 3px solid var(--primary-light); padding: 5px; } .sidebar-logo img { width: 100%; height: 100%; object-fit: contain; }
+
+        .sidebar-header h3 {
+            color: var(--gray-800);
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+
+        .sidebar-header p {
+            color: var(--gray-500);
+            font-size: 12px;
+        }
+
+        .sidebar-nav {
+            padding: 20px 0;
+        }
+
+        .nav-item {
+            list-style: none;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 25px;
+            color: var(--gray-600);
+            text-decoration: none;
+            transition: all var(--transition-normal);
+            position: relative;
+            margin: 5px 0;
+        }
+
+        .nav-link i {
+            width: 24px;
+            font-size: 18px;
+            transition: all var(--transition-normal);
+        }
+
+        .nav-link span {
+            font-weight: 500;
+        }
+
+        .nav-link:hover {
+            background: var(--gray-100);
+            color: var(--primary);
+            transform: translateX(-5px);
+        }
+
+        .nav-link.active {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            box-shadow: var(--shadow-md);
+        }
+
+        .nav-link.active i {
+            color: white;
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-right: var(--sidebar-width);
+            min-height: 100vh;
+        }
+
+        /* Top Header */
+        .top-header {
+            background: var(--white);
+            padding: 0 30px;
+            height: var(--header-height);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: var(--shadow-sm);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-search {
+            position: relative;
+        }
+
+        .header-search i {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--gray-400);
+        }
+
+        .header-search input {
+            padding: 10px 45px 10px 20px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md);
+            width: 300px;
+            font-family: 'Cairo', sans-serif;
+            background: var(--gray-50);
+            transition: all var(--transition-normal);
+        }
+
+        .header-search input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+            width: 350px;
+        }
+
+        .points-badge {
+            background: linear-gradient(135deg, var(--warning), #e67e22);
+            padding: 8px 20px;
+            border-radius: 50px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: white;
+            font-weight: 600;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 8px 15px;
+            border-radius: var(--radius-md);
+            transition: all var(--transition-normal);
+        }
+
+        .user-menu:hover {
+            background: var(--gray-100);
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+
+        /* AI Recommendations Page Styles */
+        .ai-hero {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: var(--radius-lg);
+            padding: 50px;
+            color: white;
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .ai-hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+            animation: rotate 20s linear infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .ai-hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 600px;
+        }
+
+        .ai-hero-content h1 {
+            font-size: 36px;
+            margin-bottom: 15px;
+            font-weight: 800;
+        }
+
+        .ai-hero-content p {
+            font-size: 18px;
+            opacity: 0.9;
+            line-height: 1.6;
+        }
+
+        .ai-icon-large {
+            position: absolute;
+            left: 50px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 150px;
+            opacity: 0.2;
+            z-index: 0;
+        }
+
+        .analyzer-card {
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            padding: 35px;
+            box-shadow: var(--shadow-xl);
+            margin-top: -60px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .analyzer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 25px;
+            align-items: flex-end;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: var(--gray-700);
+            font-size: 14px;
+        }
+
+        .input-group select {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid var(--gray-100);
+            border-radius: var(--radius-md);
+            font-family: 'Cairo', sans-serif;
+            background: var(--gray-50);
+            transition: all var(--transition-normal);
+            cursor: pointer;
+        }
+
+        .input-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: var(--white);
+            box-shadow: 0 0 0 4px var(--primary-glow);
+        }
+
+        .btn-analyze {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            border: none;
+            padding: 16px 30px;
+            border-radius: var(--radius-md);
+            font-weight: 700;
+            cursor: pointer;
+            transition: all var(--transition-normal);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            font-size: 16px;
+        }
+
+        .btn-analyze:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(10, 102, 194, 0.3);
+        }
+
+        .recommendation-result {
+            display: none;
+            margin-top: 40px;
+            animation: slideUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .recommendation-result.active {
+            display: block;
+        }
+
+        .result-container {
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            box-shadow: var(--shadow-lg);
+            border-right: 8px solid var(--primary);
+            display: grid;
+            grid-template-columns: 1fr 350px;
+        }
+
+        .result-main {
+            padding: 40px;
+        }
+
+        .result-sidebar {
+            background: var(--gray-50);
+            padding: 40px;
+            border-right: 1px solid var(--gray-200);
+        }
+
+        .result-badge {
+            background: var(--primary-light);
+            color: var(--primary);
+            padding: 6px 15px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 700;
+            display: inline-block;
+            margin-bottom: 15px;
+        }
+
+        .result-sport-name {
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--gray-900);
+            margin-bottom: 20px;
+        }
+
+        .result-text {
+            font-size: 16px;
+            line-height: 1.8;
+            color: var(--gray-600);
+            margin-bottom: 30px;
+        }
+
+        .benefit-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+
+        .benefit-item i {
+            color: var(--success);
+            font-size: 18px;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(40px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 992px) {
+            .result-container {
+                grid-template-columns: 1fr;
+            }
+            .main-content {
+                margin-right: 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <div class="overlay" id="overlay"></div>
+
+        <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo"><img src="logo.png" alt="شعار المنصة"></div>
+            <h3 data-i18n="user_title">مديرية الشباب والرياضة</h3>
+            <p data-i18n="user_subtitle">القليوبية | منصتك الذكية</p>
+        </div>
+        <ul class="sidebar-nav">
+            <li class="nav-item"><a href="user-dashboard.html" class="nav-link"><i class="fas fa-home"></i><span data-i18n="home">الرئيسية</span></a></li>
+            <li class="nav-item"><a href="user-centers.html" class="nav-link"><i class="fas fa-building"></i><span data-i18n="centers">المراكز الشبابية</span></a></li>
+            <li class="nav-item"><a href="user-ideas.html" class="nav-link"><i class="fas fa-lightbulb"></i><span data-i18n="ideas">الأفكار</span></a></li>
+            <li class="nav-item"><a href="user-challenges.html" class="nav-link"><i class="fas fa-trophy"></i><span data-i18n="challenges">التحديات</span></a></li>
+            <li class="nav-item"><a href="user-profile.html" class="nav-link"><i class="fas fa-user-circle"></i><span data-i18n="profile">الملف الشخصي</span></a></li>
+            <li class="nav-item"><a href="user-recommendations.html" class="nav-link active"><i class="fas fa-robot"></i><span data-i18n="recommendations">توصيات ذكية</span></a></li>
+            <li class="nav-item"><a href="settings.html" class="nav-link"><i class="fas fa-cog"></i><span data-i18n="settings">الإعدادات</span></a></li>
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        <header class="top-header">
+            <div class="header-search"><i class="fas fa-search"></i><input type="text" data-i18n="search_smart" placeholder="بحث ذكي..." id="globalSearch"></div>
+            <div class="points-badge"><i class="fas fa-star"></i><span data-i18n="my_points_label">نقاطي: </span><span id="userPoints">0</span></div>
+            <div class="header-actions">
+                <button class="menu-toggle" id="menuToggle"><i class="fas fa-bars"></i></button>
+                <div class="user-menu"><div class="user-info"><h4 id="userName" data-i18n="loading">جاري التحميل...</h4><p data-i18n="active_member">عضو نشط</p></div><div class="user-avatar"><i class="fas fa-user"></i></div></div>
+            </div>
+        </header>
+
+        <div class="content-wrapper">
+            <div class="ai-hero">
+                <div class="ai-hero-content">
+                    <h1 data-i18n="ai_assistant_title">مساعدك الرياضي الذكي</h1>
+                    <p data-i18n="ai_assistant_desc">نستخدم تقنيات تحليل البيانات لنقدم لك أفضل التوصيات الرياضية التي تناسب اهتماماتك وفئتك العمرية لتحقيق أقصى استفادة.</p>
+                </div>
+                <i class="fas fa-robot ai-icon-large"></i>
+            </div>
+
+            <div class="analyzer-card">
+                <div class="analyzer-grid">
+                    <div class="input-group">
+                        <label data-i18n="age_category">الفئة العمرية</label>
+                        <select id="ageRange">
+                            <option value="" data-i18n="choose_category">اختر الفئة</option>
+                            <option value="child" data-i18n="under_12">أقل من 12 سنة</option>
+                            <option value="teen" data-i18n="teens">12 - 18 سنة</option>
+                            <option value="youth" data-i18n="youth_20s">19 - 30 سنة</option>
+                            <option value="adult" data-i18n="adults_30s">31 - 45 سنة</option>
+                            <option value="senior" data-i18n="seniors">أكثر من 45 سنة</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label data-i18n="main_goal">الهدف الأساسي</label>
+                        <select id="goal">
+                            <option value="" data-i18n="choose_goal">اختر هدفك</option>
+                            <option value="muscles" data-i18n="build_muscles">بناء العضلات</option>
+                            <option value="weight" data-i18n="lose_weight">خسارة الوزن</option>
+                            <option value="fitness" data-i18n="general_fitness">لياقة عامة</option>
+                            <option value="social" data-i18n="social_activity">نشاط اجتماعي</option>
+                        </select>
+                    </div>
+                    <button class="btn-analyze" id="analyzeBtn">
+                        <i class="fas fa-wand-magic-sparkles"></i>
+                        <span data-i18n="get_recommendations">الحصول على التوصيات</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="result" class="recommendation-result">
+                <div class="result-container">
+                    <div class="result-main">
+                        <span class="result-badge" data-i18n="ai_recommendation">توصية الذكاء الاصطناعي</span>
+                        <h2 class="result-sport-name" id="sportName"></h2>
+                        <p class="result-text" id="sportDesc"></p>
+                        
+                        <div id="benefitsList">
+                            <!-- Benefits will be injected here -->
+                        </div>
+                    </div>
+                    <div class="result-sidebar">
+                        <div style="text-align: center; margin-bottom: 30px;">
+                            <div style="font-size: 50px; color: var(--primary); margin-bottom: 10px;" id="sportIcon"></div>
+                            <p style="font-weight: 700; color: var(--gray-700);" data-i18n="about_sport">عن الرياضة</p>
+                        </div>
+                        <div class="stat-mini-card" style="margin-bottom: 20px;">
+                            <h3 id="pointsNeeded">50</h3>
+                            <p data-i18n="points_needed">نقاط مطلوبة</p>
+                        </div>
+                        <button class="btn-analyze" style="width: 100%;" data-i18n="start_now">ابدأ الآن</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
+    <script src="db.js"></script>
+    <script>
+        async function checkSession() {
+            const user = await window.getLoggedInUser();
+            if (!user) {
+                window.location.href = 'index.html';
+                return;
+            }
+            document.getElementById('userName').textContent = user.name;
+            document.getElementById('userPoints').textContent = user.points || 0;
+        }
+
+        function generateSmartRecommendation() {
+            const age = document.getElementById('ageRange').value;
+            const goal = document.getElementById('goal').value;
+            const pref = document.getElementById('preference').value;
+
+            if (!age || !goal || !pref) {
+                alert('يرجى اختيار جميع الخيارات للحصول على تحليل دقيق');
+                return;
+            }
+
+            const recommendations = {
+                'child-fitness-team': { name: 'كرة القدم', desc: 'تعتبر كرة القدم مثالية للأطفال لبناء اللياقة البدنية وروح الفريق.', benefits: ['تنمية مهارات التواصل', 'تحسين سرعة الاستجابة', 'بناء عضلات قوية'] },
+                'young-weight-individual': { name: 'الجري السريع', desc: 'الجري هو أفضل وسيلة لحرق السعرات الحرارية في وقت قصير للشباب.', benefits: ['حرق دهون عالي', 'تحسين صحة القلب', 'زيادة القدرة على التحمل'] },
+                'teen-muscle-individual': { name: 'الجمباز / الكاراتيه', desc: 'تساعد هذه الرياضات في بناء عضلات مرنة وقوية في سن المراهقة.', benefits: ['زيادة المرونة', 'تقوية الأعصاب', 'الدفاع عن النفس'] },
+                'adult-fitness-water': { name: 'السباحة الحرة', desc: 'السباحة هي الرياضة الأكثر أماناً وفاعلية للكبار للحفاظ على اللياقة.', benefits: ['راحة المفاصل', 'تنشيط كامل عضلات الجسم', 'تقليل التوتر'] }
+            };
+
+            const key = `${age}-${goal}-${pref}`;
+            const rec = recommendations[key] || { 
+                name: 'الكرة الطائرة', 
+                desc: 'رياضة ممتعة ومناسبة لجميع الأعمار تزيد من مهارات التركيز والتعاون.', 
+                benefits: ['تحسين التركيز', 'تقوية عضلات اليدين', 'روح الفريق'] 
+            };
+
+            document.getElementById('resSportName').textContent = rec.name;
+            document.getElementById('resDescription').textContent = rec.desc;
+            document.getElementById('resBenefits').innerHTML = rec.benefits.map(b => `<div class="benefit-item"><i class="fas fa-check"></i>${b}</div>`).join('');
+            
+            document.getElementById('recommendationResult').classList.add('active');
+            window.scrollTo({ top: document.getElementById('recommendationResult').offsetTop - 100, behavior: 'smooth' });
+        }
+
+        document.addEventListener('DOMContentLoaded', checkSession);
+        
+        // Mobile Menu Toggle
+        document.getElementById('menuToggle').addEventListener('click', () => {
+            document.getElementById('sidebar').classList.toggle('open');
+            document.getElementById('overlay').classList.toggle('show');
+        });
+        
+        document.getElementById('overlay').addEventListener('click', () => {
+            document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('overlay').classList.remove('show');
+        });
+    </script>
+    </div>
+</body>
+</html>
+

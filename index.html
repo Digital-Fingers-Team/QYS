@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسجيل الدخول | منصة الشباب والرياضة</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .login-card {
+            background: #fff;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+            animation: slideIn 0.6s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .login-logo {
+            width: 100px;
+            height: 100px;
+            background: #fff;
+            border-radius: 50%;
+            margin: -90px auto 20px;
+            padding: 10px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            border: 5px solid #fff;
+        }
+
+        .login-logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .login-header h2 {
+            font-size: 1.8rem;
+            color: #1e293b;
+            margin-bottom: 10px;
+        }
+
+        .login-header p {
+            color: #64748b;
+            margin-bottom: 30px;
+        }
+
+        .role-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+            background: #f1f5f9;
+            padding: 5px;
+            border-radius: 12px;
+        }
+
+        .role-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: transparent;
+            color: #64748b;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        .role-btn.active {
+            background: #fff;
+            color: #2563eb;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .form-group {
+            text-align: right;
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #475569;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-wrapper i {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #94a3b8;
+        }
+
+        .input-wrapper input {
+            width: 100%;
+            padding: 12px 45px 12px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-family: inherit;
+            transition: all 0.3s;
+        }
+
+        .input-wrapper input:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+
+        .btn-login:hover {
+            background: #1e40af;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px rgba(37, 99, 235, 0.2);
+        }
+
+        .signup-link {
+            margin-top: 25px;
+            color: #64748b;
+            font-size: 0.95rem;
+        }
+
+        .signup-link a {
+            color: #2563eb;
+            font-weight: 700;
+        }
+
+        .signup-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-logo">
+            <img src="logo.png" alt="مديرية الشباب والرياضة">
+        </div>
+        <div class="login-header">
+            <h2 data-i18n="login_title">تسجيل الدخول</h2>
+            <p data-i18n="welcome_back">مرحباً بك مجدداً في منصة الشباب</p>
+        </div>
+
+        <form id="loginForm">
+            <div class="form-group">
+                <label data-i18n="email">البريد الإلكتروني</label>
+                <div class="input-wrapper">
+                    <i class="fas fa-envelope"></i>
+                    <input type="email" id="email" data-i18n="email" placeholder="name@example.com" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label data-i18n="password">كلمة المرور</label>
+                <div class="input-wrapper">
+                    <i class="fas fa-lock"></i>
+                    <input type="password" id="password" data-i18n="password" placeholder="••••••••" required>
+                </div>
+            </div>
+            <button type="submit" class="btn-login" data-i18n="login_title">تسجيل الدخول</button>
+        </form>
+
+        <div class="signup-link">
+            <span data-i18n="no_account">ليس لديك حساب؟</span> <a href="signup.html" data-i18n="signup_title">إنشاء حساب جديد</a>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
+    <script src="db.js"></script>
+    <script src="app.js"></script>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const user = await db.users.where('email').equals(email).first();
+                
+                if (!user) {
+                    showToast('البريد الإلكتروني غير موجود', 'error');
+                    return;
+                }
+
+                if (user.password !== password) {
+                    showToast('كلمة المرور غير صحيحة', 'error');
+                    return;
+                }
+
+                // Create session
+                const expiresAt = new Date().getTime() + (2 * 60 * 60 * 1000); // 2 hours
+                const sessionData = {
+                    userId: user.id,
+                    loggedIn: true,
+                    role: user.role,
+                    expiresAt: expiresAt
+                };
+                
+                // Try saving to both Storage mechanisms with fallback
+                try {
+                    localStorage.setItem('session', JSON.stringify(sessionData));
+                } catch (e) {
+                    console.warn("LocalStorage full, using SessionStorage only");
+                }
+                
+                try {
+                    sessionStorage.setItem('session', JSON.stringify(sessionData));
+                } catch (e) {
+                    console.error("SessionStorage also full!");
+                }
+                
+                showToast(`مرحباً ${user.name}، جاري توجيهك...`);
+                
+                setTimeout(() => {
+                    window.location.href = user.role === 'admin' ? 'admin-dashboard.html' : 'user-dashboard.html';
+                }, 1000);
+
+            } catch (err) {
+                console.error("Login Error:", err);
+                showToast('حدث خطأ أثناء تسجيل الدخول: ' + err.message, 'error');
+            }
+        });
+    </script>
+</body>
+</html>

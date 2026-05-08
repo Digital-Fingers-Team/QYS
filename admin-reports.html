@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>التقارير التحليلية | منصة الشباب والرياضة</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <div class="overlay" id="overlay"></div>
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">
+                    <img src="logo.png" alt="المنصة">
+                </div>
+                <h3 data-i18n="admin_title">مديرية الشباب والرياضة</h3>
+                <p data-i18n="admin_subtitle">لوحة تحكم المسؤول</p>
+            </div>
+            <ul class="sidebar-nav">
+                <li class="nav-item">
+                    <a href="admin-dashboard.html" class="nav-link">
+                        <i class="fas fa-chart-pie"></i>
+                        <span data-i18n="dashboard">الإحصائيات العامة</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="admin-users.html" class="nav-link">
+                        <i class="fas fa-users"></i>
+                        <span data-i18n="users">إدارة المستخدمين</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="admin-centers.html" class="nav-link">
+                        <i class="fas fa-building"></i>
+                        <span data-i18n="centers">إدارة المراكز</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="admin-ideas.html" class="nav-link">
+                        <i class="fas fa-lightbulb"></i>
+                        <span data-i18n="ideas">إدارة الأفكار</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="admin-challenges.html" class="nav-link">
+                        <i class="fas fa-trophy"></i>
+                        <span data-i18n="challenges">إدارة التحديات</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="admin-complaints.html" class="nav-link">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span data-i18n="complaints">الشكاوى والتقارير</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="admin-reports.html" class="nav-link active">
+                        <i class="fas fa-file-invoice"></i>
+                        <span data-i18n="reports">التقارير التحليلية</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="settings.html" class="nav-link">
+                        <i class="fas fa-cog"></i>
+                        <span data-i18n="settings">الإعدادات</span>
+                    </a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-header">
+                <div class="header-left">
+                    <button class="btn btn-outline" id="menuToggle" style="display: none;">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <div class="search-wrapper">
+                        <i class="fas fa-search"></i>
+                        <input type="text" data-i18n="search" placeholder="بحث في التقارير...">
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="user-profile-header" onclick="window.logout()">
+                        <div class="user-avatar" style="background: var(--error);">أ</div>
+                        <div class="user-info-text">
+                            <h4 id="userName" data-i18n="admin">المسؤول</h4>
+                            <span style="color: var(--error);" data-i18n="logout">تسجيل الخروج</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="page-header fade-in">
+                    <h1 data-i18n="admin_reports_title">التقارير التحليلية والإحصائيات 📊</h1>
+                    <p style="color: var(--text-muted);" data-i18n="admin_reports_desc">تحليل بيانات المنصة وتفاعل الشباب بشكل معمق.</p>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;" class="fade-in">
+                    <div class="card">
+                        <h3 style="margin-bottom: 20px;" data-i18n="ideas_by_category">توزيع الأفكار حسب التصنيف</h3>
+                        <canvas id="ideasChart" height="250"></canvas>
+                    </div>
+                    <div class="card">
+                        <h3 style="margin-bottom: 20px;" data-i18n="complaints_status_chart">حالات الشكاوى والبلاغات</h3>
+                        <canvas id="complaintsChart" height="250"></canvas>
+                    </div>
+                </div>
+
+                <div class="card fade-in">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 data-i18n="full_activity_log">سجل النشاطات الكامل</h3>
+                        <button class="btn btn-outline" onclick="exportActivityLog()">
+                            <i class="fas fa-download"></i> <span data-i18n="export_data">تصدير البيانات</span>
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th data-i18n="activity_user">المستخدم</th>
+                                    <th data-i18n="action_col">الإجراء</th>
+                                    <th data-i18n="activity_time">الوقت</th>
+                                    <th data-i18n="details_col">التفاصيل</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activityLogBody">
+                                <!-- Data will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
+    <script src="db.js"></script>
+    <script src="app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const user = await window.getLoggedInUser();
+            if (user && user.role === 'admin') {
+                initReports();
+            } else {
+                window.location.href = 'index.html';
+            }
+        });
+
+        async function initReports() {
+            loadActivityLog();
+            initIdeasChart();
+            initComplaintsChart();
+        }
+
+        async function loadActivityLog() {
+            const activities = await db.activities.orderBy('timestamp').reverse().limit(20).toArray();
+            const tbody = document.getElementById('activityLogBody');
+            tbody.innerHTML = activities.map(a => `
+                <tr>
+                    <td>${a.userName}</td>
+                    <td><span class="badge badge-primary">${a.action}</span></td>
+                    <td>${new Date(a.timestamp).toLocaleString('ar-EG')}</td>
+                    <td><span style="font-size: 13px; color: var(--text-muted);">إجراء نظامي</span></td>
+                </tr>
+            `).join('');
+            
+            if (activities.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px;">لا يوجد نشاطات مسجلة حالياً</td></tr>';
+            }
+        }
+
+        async function initIdeasChart() {
+            const ideas = await db.ideas.toArray();
+            const categories = {};
+            ideas.forEach(i => {
+                categories[i.category] = (categories[i.category] || 0) + 1;
+            });
+
+            const ctx = document.getElementById('ideasChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(categories),
+                    datasets: [{
+                        data: Object.values(categories),
+                        backgroundColor: ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { font: { family: 'Cairo' } } }
+                    }
+                }
+            });
+        }
+
+        async function initComplaintsChart() {
+            const complaints = await db.complaints.toArray();
+            const statusCounts = { 'قيد المعالجة': 0, 'تم الحل': 0, 'مرفوضة': 0 };
+            complaints.forEach(c => {
+                if (statusCounts[c.status] !== undefined) statusCounts[c.status]++;
+            });
+
+            const ctx = document.getElementById('complaintsChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(statusCounts),
+                    datasets: [{
+                        label: 'عدد الشكاوى',
+                        data: Object.values(statusCounts),
+                        backgroundColor: ['#f59e0b', '#10b981', '#ef4444'],
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                    }
+                }
+            });
+        }
+
+        function exportActivityLog() {
+            window.showToast('جاري تحضير ملف البيانات للتصدير...', 'success');
+            // Mock export functionality
+            setTimeout(() => {
+                window.showToast('تم تصدير التقرير بنجاح (CSV)', 'success');
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
