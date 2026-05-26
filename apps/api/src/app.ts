@@ -2,6 +2,7 @@ import express from "express"; import cors from "cors"; import router from "./ro
 const app = express();
 app.use(cors({ origin: env.CORS_ORIGIN }));
 app.use(express.json());
+app.get('/', (_req,res)=>res.json({name:'qys-api',status:'ok'}));
 app.get('/health', (_req,res)=>res.json({status:'ok'}));
 app.use('/api', router);
 app.use(errorHandler);
