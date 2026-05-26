@@ -1,7 +1,12 @@
 const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
-const API_URL = rawApiUrl.replace(/\/$/, '').endsWith('/api')
-  ? rawApiUrl.replace(/\/$/, '')
-  : `${rawApiUrl.replace(/\/$/, '')}/api`;
+const withProtocol = /^https?:\/\//.test(rawApiUrl)
+  ? rawApiUrl
+  : rawApiUrl.startsWith('localhost')
+    ? `http://${rawApiUrl}`
+    : `https://${rawApiUrl}`;
+const API_URL = withProtocol.replace(/\/$/, '').endsWith('/api')
+  ? withProtocol.replace(/\/$/, '')
+  : `${withProtocol.replace(/\/$/, '')}/api`;
 
 export async function api<T>(path: string, init?: RequestInit, token?: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
