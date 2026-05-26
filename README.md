@@ -65,6 +65,7 @@ pnpm dev
 ## Production build
 ```bash
 pnpm build
+pnpm run build:api
 pnpm --filter @qys/api start
 pnpm --filter @qys/web start
 ```
@@ -76,7 +77,7 @@ pnpm --filter @qys/web start
    - API: `DATABASE_URL`, `JWT_SECRET`, `PORT`, `CORS_ORIGIN`
    - Web: `NEXT_PUBLIC_API_URL`
 4. Build commands:
-   - API: `pnpm install && pnpm --filter @qys/shared build && pnpm --filter @qys/api build`
+   - API: `pnpm install && pnpm run build:api`
    - Web: `pnpm install && pnpm --filter @qys/shared build && pnpm --filter @qys/web build`
 5. Start commands:
    - API: `pnpm --filter @qys/api start`
