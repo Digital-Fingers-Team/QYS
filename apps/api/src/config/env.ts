@@ -27,7 +27,6 @@ const envSchema = z
       CORS_ORIGIN:
         value.FRONTEND_URL ||
         corsOrigin ||
-        (value.RAILWAY_PUBLIC_DOMAIN ? `https://${value.RAILWAY_PUBLIC_DOMAIN}` : undefined) ||
         (isDeployed ? "*" : "http://localhost:3000")
     };
   })
