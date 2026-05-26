@@ -1,0 +1,12 @@
+import { Router } from "express";
+import { authController, centersController, challengesController, complaintsController, ideasController, usersController } from "../controllers";
+import { auth, requireAdmin } from "../middleware/auth";
+const router = Router();
+router.post('/auth/register', authController.register);
+router.post('/auth/login', authController.login);
+router.get('/users', auth, requireAdmin, usersController.list);
+router.get('/centers', centersController.list); router.post('/centers', auth, requireAdmin, centersController.create);
+router.get('/challenges', challengesController.list); router.post('/challenges', auth, requireAdmin, challengesController.create); router.post('/challenges/:id/join', auth, challengesController.join);
+router.get('/ideas', ideasController.list); router.post('/ideas', auth, ideasController.create);
+router.get('/complaints', complaintsController.list); router.post('/complaints', auth, complaintsController.create);
+export default router;
