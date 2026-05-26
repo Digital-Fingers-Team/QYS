@@ -1,14 +1,13 @@
 # QYS Monorepo (Production-Ready Full Stack)
 
 ## Project overview
-QYS was migrated from a static IndexedDB-based frontend into a production-oriented full-stack monorepo using Next.js + Express + PostgreSQL + Prisma.
+QYS was migrated from a static IndexedDB-based frontend into a production-oriented full-stack monorepo using Next.js + Express with MongoDB or PostgreSQL.
 
 ## Tech stack
 - Monorepo: pnpm workspaces, Turborepo
 - Frontend: Next.js App Router, React, TypeScript, TailwindCSS
 - Backend: Node.js, Express.js, TypeScript
-- Database: PostgreSQL
-- ORM: Prisma
+- Database: MongoDB (primary) or PostgreSQL (fallback)
 - Validation: Zod (shared package)
 
 ## Structure
@@ -45,8 +44,9 @@ cp apps/web/.env.example apps/web/.env.local
 ```
 
 ## Database setup
-1. Ensure PostgreSQL is running.
-2. Set `DATABASE_URL` in `apps/api/.env`.
+Set one of these in `apps/api/.env`:
+1. `DATABASE_URL` for PostgreSQL (if present, API uses PostgreSQL).
+2. `MONGODB_URL` for MongoDB (used when `DATABASE_URL` is not set).
 
 ## Prisma commands
 ```bash
@@ -74,7 +74,7 @@ pnpm --filter @qys/web start
 1. Create Railway project and add PostgreSQL plugin.
 2. Set service for `apps/api` and another for `apps/web`.
 3. Add env vars:
-   - API: `DATABASE_URL`, `JWT_SECRET`, `PORT`, `CORS_ORIGIN`
+   - API: `DATABASE_URL` or `MONGODB_URL`, `JWT_SECRET`, `PORT`, `CORS_ORIGIN`
    - Web: `NEXT_PUBLIC_API_URL`
 4. Build commands:
    - API: `pnpm install && pnpm run build:api`
