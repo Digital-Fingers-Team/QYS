@@ -5,5 +5,6 @@ app.use(express.json());
 app.get('/', (_req,res)=>res.json({name:'qys-api',status:'ok'}));
 app.get('/health', (_req,res)=>res.json({status:'ok'}));
 app.use('/api', router);
+app.use(router);
 app.use(errorHandler);
 export default app;
