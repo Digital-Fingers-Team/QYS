@@ -1,29 +1,25 @@
-export const assignableRoles = ["SUPER_ADMIN", "MINISTRY_MANAGER", "DIRECTORATE_MANAGER", "CENTER_MANAGER", "USER"] as const;
+export const assignableRoles = ["DIRECTORATE_MANAGER", "CENTER_MANAGER", "USER"] as const;
 export type AppRole = (typeof assignableRoles)[number];
 export type StoredRole = AppRole | "ADMIN" | "CENTER";
 
-export const adminRoles: AppRole[] = ["SUPER_ADMIN", "MINISTRY_MANAGER", "DIRECTORATE_MANAGER"];
+export const adminRoles: AppRole[] = ["DIRECTORATE_MANAGER"];
 export const managementRoles: AppRole[] = [...adminRoles, "CENTER_MANAGER"];
 export const reportRoles: AppRole[] = [...managementRoles];
 
 const assignmentMatrix: Record<AppRole, AppRole[]> = {
-  SUPER_ADMIN: [...assignableRoles],
-  MINISTRY_MANAGER: ["DIRECTORATE_MANAGER", "CENTER_MANAGER", "USER"],
   DIRECTORATE_MANAGER: ["CENTER_MANAGER", "USER"],
   CENTER_MANAGER: ["USER"],
   USER: []
 };
 
 const managementMatrix: Record<AppRole, AppRole[]> = {
-  SUPER_ADMIN: [...assignableRoles],
-  MINISTRY_MANAGER: ["DIRECTORATE_MANAGER", "CENTER_MANAGER", "USER"],
   DIRECTORATE_MANAGER: ["CENTER_MANAGER", "USER"],
   CENTER_MANAGER: [],
   USER: []
 };
 
 export function normalizeRole(role?: string): AppRole {
-  if (role === "ADMIN") return "SUPER_ADMIN";
+  if (role === "ADMIN") return "DIRECTORATE_MANAGER";
   if (role === "CENTER") return "CENTER_MANAGER";
   if (assignableRoles.includes(role as AppRole)) return role as AppRole;
   return "USER";

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const RoleSchema = z.enum(["SUPER_ADMIN", "MINISTRY_MANAGER", "DIRECTORATE_MANAGER", "CENTER_MANAGER", "USER"]);
+export const RoleSchema = z.enum(["DIRECTORATE_MANAGER", "CENTER_MANAGER", "USER"]);
 export const StatusSchema = z.enum(["ACTIVE", "PENDING", "RESOLVED", "REJECTED"]);
 
 export const authRegisterSchema = z.object({

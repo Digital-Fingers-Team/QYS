@@ -6,7 +6,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { MonthlyReportRow, MonthlyReportsSummary } from '@qys/shared';
 import { api, apiForm, ApiClientError, downloadApi } from '../lib/api';
 
-type Role = 'SUPER_ADMIN' | 'MINISTRY_MANAGER' | 'DIRECTORATE_MANAGER' | 'CENTER_MANAGER' | 'USER';
+type Role = 'DIRECTORATE_MANAGER' | 'CENTER_MANAGER' | 'USER';
 type User = {
   id: number;
   name: string;
@@ -35,11 +35,9 @@ const storageKey = 'qys_session';
 const roleOptions: Array<{ value: Role; label: string }> = [
   { value: 'USER', label: 'مستخدم' },
   { value: 'CENTER_MANAGER', label: 'مسؤول مركز' },
-  { value: 'DIRECTORATE_MANAGER', label: 'مدير مديرية' },
-  { value: 'MINISTRY_MANAGER', label: 'مدير وزارة' },
-  { value: 'SUPER_ADMIN', label: 'مدير عام' }
+  { value: 'DIRECTORATE_MANAGER', label: 'مدير مديرية' }
 ];
-const adminRoles: Role[] = ['SUPER_ADMIN', 'MINISTRY_MANAGER', 'DIRECTORATE_MANAGER'];
+const adminRoles: Role[] = ['DIRECTORATE_MANAGER'];
 const managementRoles: Role[] = [...adminRoles, 'CENTER_MANAGER'];
 
 function roleLabel(role: Role) {
@@ -59,8 +57,6 @@ function canAccessReports(role?: Role) {
 }
 
 function canAssignRole(actorRole: Role | undefined, targetRole: Role) {
-  if (actorRole === 'SUPER_ADMIN') return true;
-  if (actorRole === 'MINISTRY_MANAGER') return ['DIRECTORATE_MANAGER', 'CENTER_MANAGER', 'USER'].includes(targetRole);
   if (actorRole === 'DIRECTORATE_MANAGER') return ['CENTER_MANAGER', 'USER'].includes(targetRole);
   return false;
 }

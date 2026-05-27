@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { db, disconnectDatabase, initDatabase } from "../src/db";
+import { db, disconnectDatabase, initDatabase } from "./db";
 
 const imagePool = [
   "https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800",
@@ -9,7 +9,7 @@ const imagePool = [
 
 const users = [
   { email: "user@example.com", password: "user123", role: "USER" as const, name: "مستخدم تجريبي", points: 150 },
-  { email: "admin@example.com", password: "admin123", role: "SUPER_ADMIN" as const, name: "مدير النظام", points: 0 },
+  { email: "admin@example.com", password: "admin123", role: "DIRECTORATE_MANAGER" as const, name: "مدير المديرية", points: 0 },
   { email: "center@example.com", password: "center123", role: "CENTER_MANAGER" as const, name: "حساب مركز", points: 0 }
 ];
 

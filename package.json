@@ -7,8 +7,7 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "db:generate": "pnpm --filter @qys/api prisma:generate",
-    "db:migrate": "pnpm --filter @qys/api prisma:migrate",
+    "db:seed": "pnpm --filter @qys/api db:seed",
     "build:api": "pnpm --filter @qys/shared build && pnpm --filter @qys/api build"
   },
   "devDependencies": {
