@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import { db } from "../db";
-import { login, register } from "../services/auth.service";
+import { changePassword, login, register } from "../services/auth.service";
 import {
   centerSchema,
   centerUpdateSchema,
@@ -9,11 +9,14 @@ import {
   challengeUpdateSchema,
   complaintSchema,
   ideaSchema,
+  passwordResetSchema,
   profileUpdateSchema,
+  reportSchema,
   statusUpdateSchema,
   userAdminSchema,
   userAdminUpdateSchema
 } from "@qys/shared";
+import { canAssignRole, canManageAccount, isAdminRole, normalizeRole } from "../auth/rbac";
 import { AuthedRequest } from "../middleware/auth";
 
 const idParam = (req: Request) => Number(req.params.id);
@@ -22,42 +25,89 @@ async function hashPassword(password?: string) {
   return password ? bcrypt.hash(password, 10) : undefined;
 }
 
+function publicUser<T extends { role: string; isActive?: boolean }>(user: T) {
+  return { ...user, role: normalizeRole(user.role), isActive: user.isActive !== false };
+}
+
+function assertSafeUserRole(req: AuthedRequest, role?: string, centerId?: number | null) {
+  const normalizedRole = normalizeRole(role);
+  if (!canAssignRole(req.user?.role, normalizedRole)) throw new Error("You cannot assign this role");
+  if (normalizedRole === "CENTER_MANAGER" && !centerId) throw new Error("Center manager accounts require a center");
+}
+
+async function assertCenterExists(centerId?: number | null) {
+  if (!centerId) return;
+  const center = await db.centers.get(centerId);
+  if (!center) throw new Error("Center not found");
+}
+
+async function assertCanManageAccount(req: AuthedRequest, targetId: number) {
+  const target = await db.users.findById(targetId);
+  if (!target) throw new Error("User not found");
+  if (!canManageAccount(req.user?.role, target.role)) throw new Error("You cannot manage this account");
+  return target;
+}
+
 export const authController = {
   register: async (req: Request, res: Response) => res.status(201).json(await register(req.body)),
   login: async (req: Request, res: Response) => res.json(await login(req.body)),
   me: async (req: AuthedRequest, res: Response) => {
     const user = await db.users.findById(req.user!.userId);
     if (!user) return res.status(404).json({ message: "User not found" });
-    res.json(user);
+    res.json(publicUser(user));
   },
   updateMe: async (req: AuthedRequest, res: Response) => {
     const user = await db.users.update(req.user!.userId, profileUpdateSchema.parse(req.body));
     await db.activities.create("Updated profile settings", req.user!.userId);
-    res.json(user);
-  }
+    res.json(publicUser(user));
+  },
+  changePassword: async (req: AuthedRequest, res: Response) => res.json(await changePassword(req.user!.userId, req.body))
 };
 
 export const usersController = {
-  list: async (_: Request, res: Response) => res.json(await db.users.list()),
-  create: async (req: Request, res: Response) => {
-    const data = userAdminSchema.parse(req.body);
-    const { password, ...rest } = data;
-    const user = await db.users.create({ ...rest, passwordHash: await bcrypt.hash(password || "password123", 10) });
-    await db.activities.create(`Created user ${user.email}`, user.id);
-    res.status(201).json(user);
+  list: async (req: AuthedRequest, res: Response) => {
+    const centerId = req.user?.role === "CENTER_MANAGER" ? req.user.centerId : undefined;
+    if (req.user?.role === "CENTER_MANAGER" && !centerId) throw new Error("No center is linked to this account");
+    res.json((await db.users.list(centerId ? { centerId } : undefined)).map(publicUser));
   },
-  update: async (req: Request, res: Response) => {
+  create: async (req: AuthedRequest, res: Response) => {
+    const parsed = userAdminSchema.parse(req.body);
+    const data = req.user?.role === "CENTER_MANAGER"
+      ? { ...parsed, role: "USER" as const, centerId: req.user.centerId, isActive: true, status: "ACTIVE" }
+      : parsed;
+    if (req.user?.role === "CENTER_MANAGER" && !data.centerId) throw new Error("No center is linked to this account");
+    assertSafeUserRole(req, data.role, data.centerId);
+    await assertCenterExists(data.centerId);
+    const { password, ...rest } = data;
+    const user = await db.users.create({ ...rest, createdBy: req.user!.userId, passwordHash: await bcrypt.hash(password || "password123", 10) });
+    await db.activities.create(`Created account ${user.email}`, req.user!.userId);
+    res.status(201).json(publicUser(user));
+  },
+  update: async (req: AuthedRequest, res: Response) => {
+    await assertCanManageAccount(req, idParam(req));
     const data = userAdminUpdateSchema.parse(req.body);
+    if (data.role) assertSafeUserRole(req, data.role, data.centerId);
+    await assertCenterExists(data.centerId);
+    if (idParam(req) === req.user!.userId && data.isActive === false) throw new Error("You cannot deactivate your own account");
     const passwordHash = await hashPassword(data.password);
     const { password: _password, ...rest } = data;
     const user = await db.users.update(idParam(req), { ...rest, passwordHash });
-    await db.activities.create(`Updated user ${user.email}`, user.id);
-    res.json(user);
+    await db.activities.create(`Updated account ${user.email}`, req.user!.userId);
+    res.json(publicUser(user));
   },
-  delete: async (req: Request, res: Response) => {
-    await db.users.delete(idParam(req));
-    await db.activities.create(`Deleted user #${idParam(req)}`);
-    res.status(204).send();
+  resetPassword: async (req: AuthedRequest, res: Response) => {
+    await assertCanManageAccount(req, idParam(req));
+    const { password } = passwordResetSchema.parse(req.body);
+    const user = await db.users.update(idParam(req), { passwordHash: await bcrypt.hash(password, 10) });
+    await db.activities.create(`Reset password for ${user.email}`, req.user!.userId);
+    res.json(publicUser(user));
+  },
+  delete: async (req: AuthedRequest, res: Response) => {
+    await assertCanManageAccount(req, idParam(req));
+    if (idParam(req) === req.user!.userId) throw new Error("You cannot deactivate your own account");
+    const user = await db.users.update(idParam(req), { isActive: false, status: "INACTIVE" });
+    await db.activities.create(`Deactivated account ${user.email}`, req.user!.userId);
+    res.json(publicUser(user));
   }
 };
 
@@ -136,7 +186,7 @@ export const ideasController = {
 
 export const complaintsController = {
   list: async (req: AuthedRequest, res: Response) => {
-    const userId = req.user?.role === "ADMIN" ? undefined : req.user?.userId;
+    const userId = isAdminRole(req.user?.role) ? undefined : req.user?.userId;
     res.json(await db.complaints.list(userId));
   },
   create: async (req: AuthedRequest, res: Response) => {
@@ -153,7 +203,19 @@ export const complaintsController = {
 };
 
 export const reportsController = {
-  list: async (_: Request, res: Response) => res.json(await db.reports.list())
+  list: async (req: AuthedRequest, res: Response) => {
+    const centerId = req.user?.role === "CENTER_MANAGER" ? req.user.centerId : undefined;
+    if (req.user?.role === "CENTER_MANAGER" && !centerId) throw new Error("No center is linked to this account");
+    res.json(await db.reports.list(centerId ? { centerId } : undefined));
+  },
+  create: async (req: AuthedRequest, res: Response) => {
+    const data = reportSchema.parse(req.body);
+    const centerId = req.user?.role === "CENTER_MANAGER" ? req.user.centerId : undefined;
+    if (req.user?.role === "CENTER_MANAGER" && !centerId) throw new Error("No center is linked to this account");
+    const report = await db.reports.create({ ...data, userId: req.user!.userId, centerId });
+    await db.activities.create(`Uploaded report ${report.title}`, req.user!.userId);
+    res.status(201).json(report);
+  }
 };
 
 export const activitiesController = {

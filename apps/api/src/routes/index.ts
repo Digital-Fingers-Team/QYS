@@ -10,8 +10,11 @@ import {
   statsController,
   usersController
 } from "../controllers";
-import { auth, optionalAuth, requireAdmin } from "../middleware/auth";
+import { monthlyReportsController } from "../controllers/monthly-reports.controller";
+import { managementRoles, reportRoles } from "../auth/rbac";
+import { auth, optionalAuth, requireAdmin, requireRole } from "../middleware/auth";
 import { asyncHandler } from "../middleware/async-handler";
+import { excelUpload } from "../services/excel-upload.service";
 
 const router = Router();
 
@@ -19,10 +22,12 @@ router.post("/auth/register", asyncHandler(authController.register));
 router.post("/auth/login", asyncHandler(authController.login));
 router.get("/auth/me", auth, asyncHandler(authController.me));
 router.patch("/auth/me", auth, asyncHandler(authController.updateMe));
+router.patch("/auth/password", auth, asyncHandler(authController.changePassword));
 
-router.get("/users", auth, requireAdmin, asyncHandler(usersController.list));
-router.post("/users", auth, requireAdmin, asyncHandler(usersController.create));
+router.get("/users", auth, requireRole(...managementRoles), asyncHandler(usersController.list));
+router.post("/users", auth, requireRole(...managementRoles), asyncHandler(usersController.create));
 router.patch("/users/:id", auth, requireAdmin, asyncHandler(usersController.update));
+router.patch("/users/:id/password", auth, requireAdmin, asyncHandler(usersController.resetPassword));
 router.delete("/users/:id", auth, requireAdmin, asyncHandler(usersController.delete));
 
 router.get("/centers", asyncHandler(centersController.list));
@@ -47,7 +52,14 @@ router.get("/complaints", auth, asyncHandler(complaintsController.list));
 router.post("/complaints", auth, asyncHandler(complaintsController.create));
 router.patch("/complaints/:id/status", auth, requireAdmin, asyncHandler(complaintsController.updateStatus));
 
-router.get("/reports", auth, requireAdmin, asyncHandler(reportsController.list));
+router.get("/reports", auth, requireRole(...reportRoles), asyncHandler(reportsController.list));
+router.post("/reports", auth, requireRole(...reportRoles), asyncHandler(reportsController.create));
+router.post("/monthly-reports/upload", auth, requireRole(...reportRoles), excelUpload.single("file"), asyncHandler(monthlyReportsController.upload));
+router.get("/monthly-reports", auth, requireRole(...reportRoles), asyncHandler(monthlyReportsController.list));
+router.get("/monthly-reports/summary", auth, requireRole(...reportRoles), asyncHandler(monthlyReportsController.summary));
+router.get("/monthly-reports/uploads", auth, requireRole(...reportRoles), asyncHandler(monthlyReportsController.uploads));
+router.get("/monthly-reports/export", auth, requireAdmin, asyncHandler(monthlyReportsController.export));
+router.get("/monthly-reports/template", auth, requireRole(...reportRoles), asyncHandler(monthlyReportsController.template));
 router.get("/activities", auth, requireAdmin, asyncHandler(activitiesController.list));
 router.get("/stats/admin", auth, requireAdmin, asyncHandler(statsController.admin));
 router.get("/stats/me", auth, asyncHandler(statsController.me));

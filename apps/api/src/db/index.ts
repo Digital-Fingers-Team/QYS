@@ -7,12 +7,16 @@ import type {
   ChallengeUpdateInput,
   ComplaintInput,
   IdeaInput,
+  MonthlyReportRow,
+  MonthlyUploadItem,
   ProfileUpdateInput,
+  ReportInput,
   UserAdminUpdateInput
 } from "@qys/shared";
+import { normalizeRole } from "../auth/rbac";
 import { env } from "../config/env";
 
-type Role = "ADMIN" | "USER";
+export type Role = "SUPER_ADMIN" | "MINISTRY_MANAGER" | "DIRECTORATE_MANAGER" | "CENTER_MANAGER" | "USER" | "ADMIN" | "CENTER";
 type DatabaseProvider = "postgres" | "mongodb";
 
 export interface UserRecord {
@@ -21,12 +25,17 @@ export interface UserRecord {
   email: string;
   passwordHash: string;
   role: Role;
+  centerId?: number | null;
+  createdBy?: number | null;
+  isActive: boolean;
+  lastLogin?: Date | null;
   points: number;
   status: string;
   avatar?: string | null;
   language: string;
   theme: string;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface CenterRecord {
@@ -96,8 +105,51 @@ export interface ReportRecord {
   type: string;
   title: string;
   content: string;
+  userId?: number | null;
+  centerId?: number | null;
   date: Date;
   status: string;
+}
+
+export interface MonthlyReportRecord {
+  id: number;
+  centerId: number;
+  month: string;
+  revenues: number;
+  expenses: number;
+  seminarsCount: number;
+  uploadedBy?: number | null;
+  uploadedFileId?: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface UploadedFileRecord {
+  id: number;
+  originalName: string;
+  storedName: string;
+  size: number;
+  mimeType: string;
+  extension: string;
+  hash: string;
+  status: string;
+  centerId?: number | null;
+  month?: string | null;
+  error?: string | null;
+  uploadedBy?: number | null;
+  uploadedAt: Date;
+}
+
+export interface UploadHistoryRecord {
+  id: number;
+  action: string;
+  centerId?: number | null;
+  month?: string | null;
+  uploadedFileId?: number | null;
+  reportId?: number | null;
+  userId?: number | null;
+  message?: string | null;
+  createdAt: Date;
 }
 
 interface CounterRecord {
@@ -106,18 +158,32 @@ interface CounterRecord {
 }
 
 export type PublicUser = Omit<UserRecord, "passwordHash">;
-export type AuthUser = Pick<UserRecord, "id" | "name" | "email" | "role" | "passwordHash" | "points" | "status" | "avatar" | "language" | "theme" | "createdAt">;
+export type AuthUser = Pick<UserRecord, "id" | "name" | "email" | "role" | "passwordHash" | "centerId" | "createdBy" | "isActive" | "lastLogin" | "points" | "status" | "avatar" | "language" | "theme" | "createdAt" | "updatedAt">;
 type CreateUserInput = {
   name: string;
   email: string;
   passwordHash: string;
   role?: Role;
+  centerId?: number | null;
+  createdBy?: number | null;
+  isActive?: boolean;
   points?: number;
   status?: string;
   avatar?: string | null;
   language?: string;
   theme?: string;
 };
+type CreateMonthlyReportInput = {
+  centerId: number;
+  month: string;
+  revenues: number;
+  expenses: number;
+  seminarsCount: number;
+  uploadedBy?: number | null;
+  uploadedFileId?: number | null;
+};
+type CreateUploadedFileInput = Omit<UploadedFileRecord, "id" | "uploadedAt"> & { uploadedAt?: Date };
+type CreateUploadHistoryInput = Omit<UploadHistoryRecord, "id" | "createdAt"> & { createdAt?: Date };
 type ChallengeListItem = ChallengeRecord & { _count: { participations: number }; joined?: boolean };
 type IdeaListItem = IdeaRecord & { user: { name: string } };
 type ComplaintListItem = ComplaintRecord & { user: { name: string } };
@@ -143,15 +209,20 @@ const mongoUserSchema = new Schema<UserRecord>(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
-    role: { type: String, enum: ["ADMIN", "USER"], default: "USER", required: true },
+    role: { type: String, enum: ["SUPER_ADMIN", "MINISTRY_MANAGER", "DIRECTORATE_MANAGER", "CENTER_MANAGER", "USER", "ADMIN", "CENTER"], default: "USER", required: true },
+    centerId: { type: Number },
+    createdBy: { type: Number },
+    isActive: { type: Boolean, default: true, required: true },
+    lastLogin: { type: Date },
     points: { type: Number, default: 0, required: true },
     status: { type: String, default: "ACTIVE", required: true },
     avatar: { type: String },
     language: { type: String, default: "ar", required: true },
     theme: { type: String, default: "light", required: true },
-    createdAt: { type: Date, default: () => new Date(), required: true }
+    createdAt: { type: Date, default: () => new Date(), required: true },
+    updatedAt: { type: Date, default: () => new Date(), required: true }
   },
-  { versionKey: false }
+  { versionKey: false, timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" } }
 );
 
 const mongoCenterSchema = new Schema<CenterRecord>(
@@ -241,11 +312,69 @@ const mongoReportSchema = new Schema<ReportRecord>(
     type: { type: String, required: true },
     title: { type: String, required: true },
     content: { type: String, required: true },
+    userId: { type: Number },
+    centerId: { type: Number },
     date: { type: Date, default: () => new Date(), required: true },
     status: { type: String, default: "PENDING", required: true }
   },
   { versionKey: false }
 );
+
+const mongoMonthlyReportSchema = new Schema<MonthlyReportRecord>(
+  {
+    id: { type: Number, required: true, unique: true },
+    centerId: { type: Number, required: true },
+    month: { type: String, required: true },
+    revenues: { type: Number, required: true },
+    expenses: { type: Number, required: true },
+    seminarsCount: { type: Number, required: true },
+    uploadedBy: { type: Number },
+    uploadedFileId: { type: Number },
+    createdAt: { type: Date, default: () => new Date(), required: true },
+    updatedAt: { type: Date, default: () => new Date(), required: true }
+  },
+  { versionKey: false, timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" } }
+);
+mongoMonthlyReportSchema.index({ centerId: 1, month: 1 }, { unique: true });
+mongoMonthlyReportSchema.index({ month: 1 });
+
+const mongoUploadedFileSchema = new Schema<UploadedFileRecord>(
+  {
+    id: { type: Number, required: true, unique: true },
+    originalName: { type: String, required: true },
+    storedName: { type: String, required: true },
+    size: { type: Number, required: true },
+    mimeType: { type: String, required: true },
+    extension: { type: String, required: true },
+    hash: { type: String, required: true },
+    status: { type: String, required: true },
+    centerId: { type: Number },
+    month: { type: String },
+    error: { type: String },
+    uploadedBy: { type: Number },
+    uploadedAt: { type: Date, default: () => new Date(), required: true }
+  },
+  { versionKey: false }
+);
+mongoUploadedFileSchema.index({ month: 1 });
+mongoUploadedFileSchema.index({ centerId: 1, month: 1 });
+
+const mongoUploadHistorySchema = new Schema<UploadHistoryRecord>(
+  {
+    id: { type: Number, required: true, unique: true },
+    action: { type: String, required: true },
+    centerId: { type: Number },
+    month: { type: String },
+    uploadedFileId: { type: Number },
+    reportId: { type: Number },
+    userId: { type: Number },
+    message: { type: String },
+    createdAt: { type: Date, default: () => new Date(), required: true }
+  },
+  { versionKey: false }
+);
+mongoUploadHistorySchema.index({ month: 1 });
+mongoUploadHistorySchema.index({ centerId: 1, month: 1 });
 
 function getOrCreateModel<T>(name: string, schema: Schema<T>) {
   return (mongoose.models[name] as mongoose.Model<T> | undefined) ?? mongoose.model<T>(name, schema);
@@ -260,6 +389,9 @@ const MongoIdea = getOrCreateModel<IdeaRecord>("Idea", mongoIdeaSchema);
 const MongoComplaint = getOrCreateModel<ComplaintRecord>("Complaint", mongoComplaintSchema);
 const MongoActivity = getOrCreateModel<ActivityRecord>("Activity", mongoActivitySchema);
 const MongoReport = getOrCreateModel<ReportRecord>("Report", mongoReportSchema);
+const MongoMonthlyReport = getOrCreateModel<MonthlyReportRecord>("MonthlyReport", mongoMonthlyReportSchema);
+const MongoUploadedFile = getOrCreateModel<UploadedFileRecord>("UploadedFile", mongoUploadedFileSchema);
+const MongoUploadHistory = getOrCreateModel<UploadHistoryRecord>("UploadHistory", mongoUploadHistorySchema);
 
 async function ensureMongoConnected(): Promise<void> {
   if (!env.MONGODB_URL) {
@@ -282,7 +414,7 @@ function clean<T extends Record<string, unknown>>(input: T): Partial<T> {
 }
 
 function asRole(role?: string): Role {
-  return role === "ADMIN" ? "ADMIN" : "USER";
+  return normalizeRole(role);
 }
 
 function parseDeadline(value: string | Date): Date {
@@ -327,6 +459,14 @@ export const db = {
       return (await MongoUser.findOne({ email }, { _id: 0 }).lean().exec()) as AuthUser | null;
     },
 
+    async findAuthById(id: number): Promise<AuthUser | null> {
+      if (databaseProvider === "postgres") {
+        return getPrisma().user.findUnique({ where: { id } });
+      }
+      await ensureMongoConnected();
+      return (await MongoUser.findOne({ id }, { _id: 0 }).lean().exec()) as AuthUser | null;
+    },
+
     async findById(id: number): Promise<PublicUser | null> {
       if (databaseProvider === "postgres") {
         const user = await getPrisma().user.findUnique({ where: { id } });
@@ -342,9 +482,10 @@ export const db = {
     async create(input: CreateUserInput): Promise<PublicUser> {
       const payload = {
         ...input,
-        role: input.role ?? "USER",
+        role: asRole(input.role),
         points: input.points ?? 0,
         status: input.status ?? "ACTIVE",
+        isActive: input.isActive ?? true,
         language: input.language ?? "ar",
         theme: input.theme ?? "light"
       };
@@ -399,12 +540,42 @@ export const db = {
       ]);
     },
 
-    async list(): Promise<PublicUser[]> {
+    async list(filter?: { centerId?: number }): Promise<PublicUser[]> {
+      const where = filter?.centerId ? { centerId: filter.centerId } : {};
       if (databaseProvider === "postgres") {
-        return getPrisma().user.findMany({ select: { id: true, name: true, email: true, role: true, points: true, status: true, avatar: true, language: true, theme: true, createdAt: true } });
+        return getPrisma().user.findMany({
+          where,
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            centerId: true,
+            createdBy: true,
+            isActive: true,
+            lastLogin: true,
+            points: true,
+            status: true,
+            avatar: true,
+            language: true,
+            theme: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        });
       }
       await ensureMongoConnected();
-      return (await MongoUser.find({}, { _id: 0, passwordHash: 0 }).sort({ createdAt: -1 }).lean().exec()) as PublicUser[];
+      return (await MongoUser.find(where, { _id: 0, passwordHash: 0 }).sort({ createdAt: -1 }).lean().exec()) as PublicUser[];
+    },
+
+    async recordLogin(id: number): Promise<void> {
+      const data = { lastLogin: new Date(), status: "ACTIVE" };
+      if (databaseProvider === "postgres") {
+        await getPrisma().user.update({ where: { id }, data });
+        return;
+      }
+      await ensureMongoConnected();
+      await MongoUser.updateOne({ id }, { $set: data }).exec();
     }
   },
 
@@ -589,16 +760,162 @@ export const db = {
   },
 
   reports: {
-    async create(data: Omit<ReportRecord, "id" | "date"> & { date?: Date }): Promise<ReportRecord> {
+    async create(data: ReportInput & { userId?: number | null; centerId?: number | null; date?: Date }): Promise<ReportRecord> {
       if (databaseProvider === "postgres") return getPrisma().report.create({ data });
       await ensureMongoConnected();
       const report = await MongoReport.create({ ...data, id: await nextId("reports") });
       return report.toObject() as unknown as ReportRecord;
     },
-    async list(): Promise<ReportRecord[]> {
-      if (databaseProvider === "postgres") return getPrisma().report.findMany({ orderBy: { date: "desc" } });
+    async list(filter?: { centerId?: number }): Promise<ReportRecord[]> {
+      const where = filter?.centerId ? { centerId: filter.centerId } : {};
+      if (databaseProvider === "postgres") return getPrisma().report.findMany({ where, orderBy: { date: "desc" } });
       await ensureMongoConnected();
-      return (await MongoReport.find({}, { _id: 0 }).sort({ date: -1 }).lean().exec()) as ReportRecord[];
+      return (await MongoReport.find(where, { _id: 0 }).sort({ date: -1 }).lean().exec()) as ReportRecord[];
+    }
+  },
+
+  monthlyReports: {
+    async findByCenterMonth(centerId: number, month: string): Promise<MonthlyReportRecord | null> {
+      if (databaseProvider === "postgres") {
+        return getPrisma().monthlyReport.findUnique({ where: { centerId_month: { centerId, month } } });
+      }
+      await ensureMongoConnected();
+      return (await MongoMonthlyReport.findOne({ centerId, month }, { _id: 0 }).lean().exec()) as MonthlyReportRecord | null;
+    },
+    async create(data: CreateMonthlyReportInput): Promise<MonthlyReportRecord> {
+      if (databaseProvider === "postgres") return getPrisma().monthlyReport.create({ data });
+      await ensureMongoConnected();
+      const report = await MongoMonthlyReport.create({ ...data, id: await nextId("monthly_reports") });
+      return report.toObject() as unknown as MonthlyReportRecord;
+    },
+    async replace(id: number, data: CreateMonthlyReportInput): Promise<MonthlyReportRecord> {
+      if (databaseProvider === "postgres") return getPrisma().monthlyReport.update({ where: { id }, data });
+      await ensureMongoConnected();
+      const report = (await MongoMonthlyReport.findOneAndUpdate(
+        { id },
+        { $set: data },
+        { new: true, projection: { _id: 0 } }
+      ).lean().exec()) as MonthlyReportRecord | null;
+      if (!report) throw new Error("Monthly report not found");
+      return report;
+    },
+    async list(filter: { month: string; centerId?: number }): Promise<MonthlyReportRow[]> {
+      const where = filter.centerId ? { month: filter.month, centerId: filter.centerId } : { month: filter.month };
+      if (databaseProvider === "postgres") {
+        const items = await getPrisma().monthlyReport.findMany({
+          where,
+          include: { center: { select: { name: true } }, uploadedFile: { select: { originalName: true } } },
+          orderBy: { centerId: "asc" }
+        });
+        return items.map((item: any) => ({
+          id: item.id,
+          centerId: item.centerId,
+          centerName: item.center.name,
+          month: item.month,
+          revenues: item.revenues,
+          expenses: item.expenses,
+          seminarsCount: item.seminarsCount,
+          uploadedBy: item.uploadedBy,
+          uploadedAt: item.updatedAt,
+          sourceFileName: item.uploadedFile?.originalName ?? null
+        }));
+      }
+      await ensureMongoConnected();
+      const [reports, centers, files] = await Promise.all([
+        MongoMonthlyReport.find(where, { _id: 0 }).sort({ centerId: 1 }).lean().exec(),
+        MongoCenter.find({}, { _id: 0, id: 1, name: 1 }).lean().exec(),
+        MongoUploadedFile.find({}, { _id: 0, id: 1, originalName: 1 }).lean().exec()
+      ]);
+      const centerNames = new Map((centers as Array<Pick<CenterRecord, "id" | "name">>).map((center) => [center.id, center.name]));
+      const fileNames = new Map((files as Array<Pick<UploadedFileRecord, "id" | "originalName">>).map((file) => [file.id, file.originalName]));
+      return (reports as MonthlyReportRecord[]).map((report) => ({
+        id: report.id,
+        centerId: report.centerId,
+        centerName: centerNames.get(report.centerId) ?? "Unknown",
+        month: report.month,
+        revenues: report.revenues,
+        expenses: report.expenses,
+        seminarsCount: report.seminarsCount,
+        uploadedBy: report.uploadedBy,
+        uploadedAt: report.updatedAt,
+        sourceFileName: report.uploadedFileId ? fileNames.get(report.uploadedFileId) ?? null : null
+      }));
+    },
+    async statistics(limit = 6) {
+      if (databaseProvider === "postgres") {
+        const groups = await getPrisma().monthlyReport.groupBy({
+          by: ["month"],
+          _sum: { revenues: true, expenses: true, seminarsCount: true },
+          _count: { centerId: true },
+          orderBy: { month: "desc" },
+          take: limit
+        });
+        return groups.reverse().map((item: any) => ({
+          month: item.month,
+          totalRevenues: item._sum.revenues ?? 0,
+          totalExpenses: item._sum.expenses ?? 0,
+          totalSeminars: item._sum.seminarsCount ?? 0,
+          uploadedCenters: item._count.centerId ?? 0
+        }));
+      }
+      await ensureMongoConnected();
+      const groups = await MongoMonthlyReport.aggregate<{
+        _id: string;
+        totalRevenues: number;
+        totalExpenses: number;
+        totalSeminars: number;
+        uploadedCenters: number;
+      }>([
+        { $group: { _id: "$month", totalRevenues: { $sum: "$revenues" }, totalExpenses: { $sum: "$expenses" }, totalSeminars: { $sum: "$seminarsCount" }, uploadedCenters: { $sum: 1 } } },
+        { $sort: { _id: -1 } },
+        { $limit: limit }
+      ]).exec();
+      return groups.reverse().map((item) => ({ month: item._id, totalRevenues: item.totalRevenues, totalExpenses: item.totalExpenses, totalSeminars: item.totalSeminars, uploadedCenters: item.uploadedCenters }));
+    }
+  },
+
+  uploadedFiles: {
+    async create(data: CreateUploadedFileInput): Promise<UploadedFileRecord> {
+      if (databaseProvider === "postgres") return getPrisma().uploadedFile.create({ data });
+      await ensureMongoConnected();
+      const file = await MongoUploadedFile.create({ ...data, id: await nextId("uploaded_files") });
+      return file.toObject() as unknown as UploadedFileRecord;
+    },
+    async update(id: number, data: Partial<CreateUploadedFileInput>): Promise<UploadedFileRecord> {
+      if (databaseProvider === "postgres") return getPrisma().uploadedFile.update({ where: { id }, data });
+      await ensureMongoConnected();
+      const file = (await MongoUploadedFile.findOneAndUpdate({ id }, { $set: clean(data as Record<string, unknown>) }, { new: true, projection: { _id: 0 } }).lean().exec()) as UploadedFileRecord | null;
+      if (!file) throw new Error("Uploaded file not found");
+      return file;
+    },
+    async list(filter?: { month?: string; centerId?: number; limit?: number }): Promise<MonthlyUploadItem[]> {
+      const where = clean({ month: filter?.month, centerId: filter?.centerId });
+      const limit = filter?.limit ?? 50;
+      if (databaseProvider === "postgres") {
+        const items = await getPrisma().uploadedFile.findMany({
+          where,
+          include: { center: { select: { name: true } } },
+          orderBy: { uploadedAt: "desc" },
+          take: limit
+        });
+        return items.map((item: any) => ({ ...item, centerName: item.center?.name ?? null }));
+      }
+      await ensureMongoConnected();
+      const [files, centers] = await Promise.all([
+        MongoUploadedFile.find(where, { _id: 0 }).sort({ uploadedAt: -1 }).limit(limit).lean().exec(),
+        MongoCenter.find({}, { _id: 0, id: 1, name: 1 }).lean().exec()
+      ]);
+      const centerNames = new Map((centers as Array<Pick<CenterRecord, "id" | "name">>).map((center) => [center.id, center.name]));
+      return (files as UploadedFileRecord[]).map((file) => ({ ...file, centerName: file.centerId ? centerNames.get(file.centerId) ?? null : null }));
+    }
+  },
+
+  uploadHistory: {
+    async create(data: CreateUploadHistoryInput): Promise<UploadHistoryRecord> {
+      if (databaseProvider === "postgres") return getPrisma().uploadHistory.create({ data });
+      await ensureMongoConnected();
+      const item = await MongoUploadHistory.create({ ...data, id: await nextId("upload_history") });
+      return item.toObject() as unknown as UploadHistoryRecord;
     }
   },
 

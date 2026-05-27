@@ -13,15 +13,27 @@ model User {
   email String @unique
   passwordHash String
   role Role @default(USER)
+  centerId Int?
+  createdBy Int?
+  isActive Boolean @default(true)
+  lastLogin DateTime?
   points Int @default(0)
   status String @default("ACTIVE")
   avatar String?
   language String @default("ar")
   theme String @default("light")
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  center Center? @relation("CenterUsers", fields: [centerId], references: [id], onDelete: SetNull)
+  creator User? @relation("UserCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdUsers User[] @relation("UserCreator")
   ideas Idea[]
   complaints Complaint[]
   challengeParticipations ChallengeParticipation[]
+  reports Report[]
+  monthlyReports MonthlyReport[]
+  uploadedFiles UploadedFile[]
+  uploadHistory UploadHistory[]
 }
 model Center {
   id          Int      @id @default(autoincrement())
@@ -33,6 +45,10 @@ model Center {
   image       String?
   description String
   createdAt   DateTime @default(now())
+  users       User[] @relation("CenterUsers")
+  reports     Report[]
+  monthlyReports MonthlyReport[]
+  uploadedFiles UploadedFile[]
 }
 
 model Challenge {
@@ -97,11 +113,77 @@ model Report {
   type    String
   title   String
   content String
+  userId  Int?
+  centerId Int?
   date    DateTime @default(now())
   status  String   @default("PENDING")
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  center  Center?  @relation(fields: [centerId], references: [id], onDelete: SetNull)
+}
+
+model MonthlyReport {
+  id             Int      @id @default(autoincrement())
+  centerId       Int
+  month          String
+  revenues       Float
+  expenses       Float
+  seminarsCount  Int
+  uploadedBy     Int?
+  uploadedFileId Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  center         Center   @relation(fields: [centerId], references: [id], onDelete: Cascade)
+  uploader       User?    @relation(fields: [uploadedBy], references: [id], onDelete: SetNull)
+  uploadedFile   UploadedFile? @relation(fields: [uploadedFileId], references: [id], onDelete: SetNull)
+
+  @@unique([centerId, month])
+  @@index([month])
+}
+
+model UploadedFile {
+  id             Int      @id @default(autoincrement())
+  originalName   String
+  storedName     String
+  size           Int
+  mimeType       String
+  extension      String
+  hash           String
+  status         String
+  centerId       Int?
+  month          String?
+  error          String?
+  uploadedBy     Int?
+  uploadedAt     DateTime @default(now())
+  center         Center?  @relation(fields: [centerId], references: [id], onDelete: SetNull)
+  uploader       User?    @relation(fields: [uploadedBy], references: [id], onDelete: SetNull)
+  monthlyReports MonthlyReport[]
+
+  @@index([month])
+  @@index([centerId, month])
+}
+
+model UploadHistory {
+  id             Int      @id @default(autoincrement())
+  action         String
+  centerId       Int?
+  month          String?
+  uploadedFileId Int?
+  reportId       Int?
+  userId         Int?
+  message        String?
+  createdAt      DateTime @default(now())
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([month])
+  @@index([centerId, month])
 }
 
 enum Role {
+  SUPER_ADMIN
+  MINISTRY_MANAGER
+  DIRECTORATE_MANAGER
+  CENTER_MANAGER
   ADMIN
   USER
+  CENTER
 }

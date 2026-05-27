@@ -48,12 +48,53 @@ Set one of these in `apps/api/.env`:
 1. `DATABASE_URL` for PostgreSQL (if present, API uses PostgreSQL).
 2. `MONGODB_URL` for MongoDB (used when `DATABASE_URL` is not set).
 
+## Authentication and roles
+Public signup always creates an active `USER` account. Users never choose roles during signup or login, but they must choose the youth center they are related to.
+
+Official youth center accounts are created from the admin users page by an authorized management account. Assign the account a center, temporary password, and one of the supported roles:
+- `SUPER_ADMIN`: full access.
+- `MINISTRY_MANAGER`: management access except super-admin assignment.
+- `DIRECTORATE_MANAGER`: can manage center/user accounts.
+- `CENTER_MANAGER`: can access reports for the linked center and upload reports.
+- `USER`: public normal user.
+
+Admins can edit accounts, reset temporary passwords, and deactivate/reactivate accounts. Deactivated accounts cannot use existing JWTs because every protected API request reloads the account from the database.
+
+Center managers use `/center` and can see only users/reports linked to their own `centerId`. When a center manager creates a user, the backend automatically assigns that user to the manager's center.
+
+## Monthly Excel reports
+The reports area now supports production monthly Excel aggregation:
+- Center managers upload one strict Excel file per center/month from `/center/reports`.
+- Ministry, directorate, and super-admin accounts upload on behalf of a selected center from `/admin/reports`.
+- Accepted columns in the first worksheet are exactly: `center_name`, `month`, `revenues`, `expenses`, `seminars_count`.
+- `month` must use `YYYY-MM`; financial fields must be non-negative numbers; `seminars_count` must be a non-negative integer.
+- Duplicate center/month uploads return a confirmation flow in the UI and can be replaced only after confirmation.
+- The original Excel binary is not retained; the system stores upload metadata, SHA-256 hash, validation status, audit history, and parsed monthly report rows.
+- Managers can download the official master workbook from the same reports page.
+
+Optional API env:
+- `EXCEL_MAX_UPLOAD_MB`: maximum Excel upload size in MB, defaults to `10`.
+
 ## Prisma commands
 ```bash
 pnpm db:generate
 pnpm db:migrate
 pnpm --filter @qys/api prisma:seed
 ```
+
+After pulling auth/schema changes for PostgreSQL, run:
+```bash
+pnpm db:generate
+pnpm db:migrate
+pnpm --filter @qys/api prisma:seed
+```
+
+MongoDB deployments do not need Prisma migrations, but should still run the seed if you want the sample super admin and center manager accounts.
+
+Seeded development credentials:
+- Super admin: `admin@example.com` / `admin123`
+- Center manager: `center@example.com` / `center123`
+- Public user: `user@example.com` / `user123`
 
 ## Development commands
 ```bash

@@ -16,7 +16,8 @@ const envSchema = z
     JWT_SECRET: z.string().min(8),
     CORS_ORIGIN: z.string().optional(),
     FRONTEND_URL: z.string().url().optional(),
-    RAILWAY_PUBLIC_DOMAIN: z.string().optional()
+    RAILWAY_PUBLIC_DOMAIN: z.string().optional(),
+    EXCEL_MAX_UPLOAD_MB: z.coerce.number().int().positive().default(10)
   })
   .transform((value) => {
     const isDeployed = value.NODE_ENV === "production" || Boolean(value.RAILWAY_PUBLIC_DOMAIN);

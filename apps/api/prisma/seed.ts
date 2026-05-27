@@ -9,7 +9,8 @@ const imagePool = [
 
 const users = [
   { email: "user@example.com", password: "user123", role: "USER" as const, name: "مستخدم تجريبي", points: 150 },
-  { email: "admin@example.com", password: "admin123", role: "ADMIN" as const, name: "مدير النظام", points: 0 }
+  { email: "admin@example.com", password: "admin123", role: "SUPER_ADMIN" as const, name: "مدير النظام", points: 0 },
+  { email: "center@example.com", password: "center123", role: "CENTER_MANAGER" as const, name: "حساب مركز", points: 0 }
 ];
 
 const centerRows = `
@@ -164,6 +165,12 @@ async function main() {
     if (!centerNames.has(center.name)) {
       await db.centers.create(center);
     }
+  }
+
+  const seededCenter = (await db.centers.list())[0];
+  const centerAccount = await db.users.findByEmail("center@example.com");
+  if (seededCenter && centerAccount) {
+    await db.users.update(centerAccount.id, { centerId: seededCenter.id, role: "CENTER_MANAGER" });
   }
 
   const existingChallenges = await db.challenges.list();
