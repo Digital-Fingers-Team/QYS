@@ -558,7 +558,8 @@ export const db = {
     async list(): Promise<IdeaListItem[]> {
       await ensureMongoConnected();
       const ideas = (await MongoIdea.find({}, { _id: 0 }).sort({ createdAt: -1 }).lean().exec()) as IdeaRecord[];
-      const users = (await MongoUser.find({ id: { $in: [...new Set(ideas.map((idea) => idea.userId))] } }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>;
+      const userIds = [...new Set(ideas.map((idea) => idea.userId))];
+      const users = (await MongoUser.find({ id: mongoose.trusted({ $in: userIds }) }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>;
       const names = new Map(users.map((user) => [user.id, user.name]));
       return ideas.map((idea) => ({ ...idea, user: { name: names.get(idea.userId) ?? "Unknown" } }));
     },
@@ -585,7 +586,8 @@ export const db = {
     async list(userId?: number): Promise<ComplaintListItem[]> {
       await ensureMongoConnected();
       const complaints = (await MongoComplaint.find(userId ? { userId } : {}, { _id: 0 }).sort({ createdAt: -1 }).lean().exec()) as ComplaintRecord[];
-      const users = (await MongoUser.find({ id: { $in: [...new Set(complaints.map((complaint) => complaint.userId))] } }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>;
+      const userIds = [...new Set(complaints.map((complaint) => complaint.userId))];
+      const users = (await MongoUser.find({ id: mongoose.trusted({ $in: userIds }) }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>;
       const names = new Map(users.map((user) => [user.id, user.name]));
       return complaints.map((complaint) => ({ ...complaint, user: { name: names.get(complaint.userId) ?? "Unknown" } }));
     },
