@@ -221,31 +221,71 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   }
 
   return (
-    <main className="auth-page">
-      <form className="auth-card grid" onSubmit={submit}>
-        <div className="brand">
-          <div className="brand-mark">Q</div>
-          <div>
-            <h1>{mode === 'login' ? 'منصة الشباب والرياضة' : 'انضم إلى المنصة'}</h1>
-            <p className="muted">القليوبية | منصة خدمات الشباب</p>
-          </div>
+    <main className={`auth-page ${mode === 'signup' ? 'signup-auth' : 'login-auth'}`}>
+      <form className={`auth-card ${mode === 'signup' ? 'signup-card' : 'login-card'}`} onSubmit={submit}>
+        <div className={`${mode === 'signup' ? 'signup-logo' : 'login-logo'} auth-logo`}>
+          <img src="/logo.png" alt="منصة الشباب والرياضة" />
         </div>
-        {mode === 'signup' && <input className="input" name="name" placeholder="الاسم الكامل" required />}
-        <input className="input" name="email" type="email" placeholder="admin@example.com" defaultValue={mode === 'login' ? 'admin@example.com' : ''} required />
-        <input className="input" name="password" type="password" placeholder="admin123" defaultValue={mode === 'login' ? 'admin123' : ''} required />
-        {mode === 'signup' && <CenterSelect centers={centers || []} required />}
-        <button className="btn primary" disabled={loading}>{loading ? 'جاري التحميل...' : mode === 'login' ? 'دخول' : 'إنشاء حساب'}</button>
+        <div className={mode === 'signup' ? 'signup-header' : 'login-header'}>
+          <h2>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}</h2>
+          <p>{mode === 'login' ? 'مرحبا بك مجددا في منصة الشباب' : 'انضم إلينا وابدأ رحلتك الرياضية اليوم'}</p>
+        </div>
+        <div className="auth-fields">
+          {mode === 'signup' && <label className="form-group">الاسم الكامل<input className="input form-control" name="name" placeholder="أدخل اسمك الكامل" required /></label>}
+          <label className="form-group">البريد الإلكتروني<input className="input form-control" name="email" type="email" placeholder="admin@example.com" defaultValue={mode === 'login' ? 'admin@example.com' : ''} required /></label>
+          <label className="form-group">كلمة المرور<input className="input form-control" name="password" type="password" placeholder="admin123" defaultValue={mode === 'login' ? 'admin123' : ''} required /></label>
+          {mode === 'signup' && <CenterSelect centers={centers || []} required />}
+        </div>
+        <button className={mode === 'signup' ? 'btn-signup' : 'btn-login'} disabled={loading}>{loading ? 'جاري التحميل...' : mode === 'login' ? 'تسجيل الدخول' : 'إنشاء الحساب'}</button>
         {error && <p className="error">{error}</p>}
-        <Link className="muted" href={mode === 'login' ? '/signup' : '/login'}>{mode === 'login' ? 'إنشاء حساب جديد' : 'لديك حساب بالفعل؟'}</Link>
+        <p className={mode === 'signup' ? 'login-link' : 'signup-link'}>
+          {mode === 'login' ? 'ليس لديك حساب؟ ' : 'لديك حساب بالفعل؟ '}
+          <Link href={mode === 'login' ? '/signup' : '/login'}>{mode === 'login' ? 'إنشاء حساب جديد' : 'سجل دخولك هنا'}</Link>
+        </p>
       </form>
     </main>
   );
+}
+
+function navIconFor(href: string) {
+  if (href.includes('users')) return 'U';
+  if (href.includes('centers')) return 'C';
+  if (href.includes('ideas')) return 'I';
+  if (href.includes('challenges')) return 'T';
+  if (href.includes('complaints')) return '!';
+  if (href.includes('reports')) return 'R';
+  if (href.includes('settings')) return 'S';
+  return 'D';
+}
+
+function statIconFor(title: string) {
+  if (title.includes('مستخدم')) return 'U';
+  if (title.includes('مركز') || title.includes('المراكز')) return 'C';
+  if (title.includes('فكر')) return 'I';
+  if (title.includes('تحد')) return 'T';
+  if (title.includes('شك')) return '!';
+  if (title.includes('تصويت')) return 'V';
+  if (title.includes('إيراد')) return '$';
+  if (title.includes('مصروف')) return 'E';
+  if (title.includes('ندوات')) return 'N';
+  return 'D';
+}
+
+function userInitial(user: User) {
+  return (user.name || user.email || 'Q').trim().charAt(0).toUpperCase();
+}
+
+function roleDescription(role: Role) {
+  if (role === 'DIRECTORATE_MANAGER') return 'مسؤول المديرية';
+  if (role === 'CENTER_MANAGER') return 'مسؤول مركز';
+  return 'عضو المنصة';
 }
 
 function Shell({ children, admin = false }: { children: React.ReactNode; admin?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, ready, logout } = useSession(true);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const t = labels[user?.language || 'ar'];
   const nav = admin
     ? [
@@ -279,37 +319,64 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
     if (admin && !canOpenAdmin(user.role)) router.replace('/dashboard');
   }, [admin, ready, router, user]);
 
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   if (!ready || !user) return <main className="auth-page">جاري التحميل...</main>;
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">Q</div>
-          <div>
-            <strong>{admin ? 'لوحة التحكم' : 'منصة الشباب'}</strong>
-            <p className="muted">{user.name}</p>
+    <div className="app-container">
+      <div className={`overlay ${mobileOpen ? 'active' : ''}`} onClick={() => setMobileOpen(false)} />
+      <aside className={`sidebar ${mobileOpen ? 'active' : ''}`}>
+        <div className="sidebar-header">
+          <div className="sidebar-logo">
+            <img src="/logo.png" alt="منصة الشباب والرياضة" />
           </div>
+          <h3>{admin ? 'مديرية الشباب والرياضة' : 'منصة الشباب والرياضة'}</h3>
+          <p>{admin ? 'لوحة تحكم المسؤول' : 'القليوبية | منصتك الذكية'}</p>
         </div>
-        <nav className="nav-list">
+        <nav className="sidebar-nav">
           {nav.map(([href, text]) => (
             <Link key={href} className={`nav-link ${pathname === href ? 'active' : ''}`} href={href}>
+              <span className="nav-icon" aria-hidden>{navIconFor(href)}</span>
               <span>{text}</span>
-              <span>{pathname === href ? '•' : ''}</span>
             </Link>
           ))}
-          {canOpenAdmin(user.role) && !admin && <Link className="nav-link" href="/admin">لوحة الإدارة</Link>}
-          <button className="btn danger" onClick={logout}>{t.logout}</button>
+          {canOpenAdmin(user.role) && !admin && <Link className="nav-link" href="/admin"><span className="nav-icon" aria-hidden>D</span><span>لوحة الإدارة</span></Link>}
         </nav>
       </aside>
-      <main className="content">{children}</main>
+      <main className="main-content">
+        <header className="top-header">
+          <div className="header-left">
+            <button className="btn btn-outline menu-toggle" type="button" onClick={() => setMobileOpen((open) => !open)} aria-label="فتح القائمة">
+              <span aria-hidden>☰</span>
+            </button>
+            <div className="search-wrapper header-search">
+              <span className="search-icon" aria-hidden>⌕</span>
+              <input type="search" placeholder="بحث سريع..." />
+            </div>
+          </div>
+          <div className="header-right">
+            {!admin && <div className="points-badge"><span>{user.points || 0}</span><span>نقطة</span></div>}
+            <button className="user-profile-header" type="button" onClick={logout} title={t.logout}>
+              <span className="user-avatar">{userInitial(user)}</span>
+              <span className="user-info-text">
+                <strong>{user.name}</strong>
+                <span>{roleDescription(user.role)} | {t.logout}</span>
+              </span>
+            </button>
+          </div>
+        </header>
+        <div className="content-wrapper">{children}</div>
+      </main>
     </div>
   );
 }
 
 function Header({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
-    <div className="topbar">
+    <div className="page-header fade-in">
       <div>
         <h1>{title}</h1>
         {subtitle && <p className="muted">{subtitle}</p>}
@@ -387,9 +454,12 @@ function UserDashboard({ token }: { token: string }) {
 
 function Stat({ title, value }: { title: string; value: number | string }) {
   return (
-    <div className="panel">
-      <p className="muted">{title}</p>
-      <h2>{value}</h2>
+    <div className="card stat-card">
+      <div className="stat-icon" aria-hidden>{statIconFor(title)}</div>
+      <div className="stat-info">
+        <h3>{value}</h3>
+        <p>{title}</p>
+      </div>
     </div>
   );
 }
