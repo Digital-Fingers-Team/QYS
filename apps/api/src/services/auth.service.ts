@@ -19,7 +19,7 @@ export async function login(input: unknown) {
   const data = authLoginSchema.parse(input);
   const user = await db.users.findByEmail(data.email);
   if (!user) throw new ApiError(401, "Invalid credentials", "INVALID_CREDENTIALS");
-  if (user.isActive === false) throw new ApiError(401, "Account is inactive", "ACCOUNT_INACTIVE");
+  if (user.isActive === false || user.deletedAt) throw new ApiError(401, "Account is inactive", "ACCOUNT_INACTIVE");
   const ok = await bcrypt.compare(data.password, user.passwordHash);
   if (!ok) throw new ApiError(401, "Invalid credentials", "INVALID_CREDENTIALS");
   const role = normalizeRole(user.role);
@@ -52,7 +52,7 @@ export async function login(input: unknown) {
 export async function changePassword(userId: number, input: unknown) {
   const data = passwordChangeSchema.parse(input);
   const user = await db.users.findAuthById(userId);
-  if (!user || user.isActive === false) throw new ApiError(401, "Account is inactive", "ACCOUNT_INACTIVE");
+  if (!user || user.isActive === false || user.deletedAt) throw new ApiError(401, "Account is inactive", "ACCOUNT_INACTIVE");
   const ok = await bcrypt.compare(data.currentPassword, user.passwordHash);
   if (!ok) throw new ApiError(400, "Current password is incorrect", "CURRENT_PASSWORD_INCORRECT");
   await db.users.update(userId, { passwordHash: await bcrypt.hash(data.newPassword, 12) });

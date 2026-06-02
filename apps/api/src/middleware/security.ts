@@ -25,15 +25,35 @@ export function rejectUnexpectedQuery(req: Request, _res: Response, next: NextFu
     "/monthly-reports",
     "/monthly-reports/summary",
     "/monthly-reports/uploads",
-    "/monthly-reports/export",
-    "/monthly-reports/template",
     "/api/monthly-reports",
     "/api/monthly-reports/summary",
-    "/api/monthly-reports/uploads",
+    "/api/monthly-reports/uploads"
+  ]);
+  const monthlyDownloadPaths = new Set([
+    "/monthly-reports/export",
+    "/monthly-reports/template",
     "/api/monthly-reports/export",
     "/api/monthly-reports/template"
   ]);
-  if (monthlyPaths.has(req.path) && keys.length === 1 && keys[0] === "month") return next();
+  const paginatedPaths = new Set([
+    "/users",
+    "/centers",
+    "/challenges",
+    "/ideas",
+    "/complaints",
+    "/reports",
+    "/activities",
+    "/api/users",
+    "/api/centers",
+    "/api/challenges",
+    "/api/ideas",
+    "/api/complaints",
+    "/api/reports",
+    "/api/activities"
+  ]);
+  if (monthlyPaths.has(req.path) && keys.every((key) => ["month", "page", "pageSize"].includes(key))) return next();
+  if (monthlyDownloadPaths.has(req.path) && keys.length === 1 && keys[0] === "month") return next();
+  if (paginatedPaths.has(req.path) && keys.every((key) => ["page", "pageSize", "q"].includes(key))) return next();
 
   return next(new ApiError(400, "Unexpected query parameter.", "UNEXPECTED_QUERY_PARAMETER"));
 }

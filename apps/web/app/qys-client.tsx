@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import type { MonthlyReportRow, MonthlyReportsSummary } from '@qys/shared';
+import type { MonthlyReportRow, MonthlyReportsSummary, Paginated } from '@qys/shared';
 import { api, apiForm, ApiClientError, downloadApi } from '../lib/api';
 
 type Role = 'DIRECTORATE_MANAGER' | 'CENTER_MANAGER' | 'USER';
@@ -197,7 +197,7 @@ function CenterSelect({ centers, defaultValue = '', required = false }: { center
 
 export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const router = useRouter();
-  const { data: centers } = useData<Center[]>('/centers', '', [], mode === 'signup');
+  const { items: centers } = usePaginatedData<Center>('/centers', '', 100, '', mode === 'signup');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -240,7 +240,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
           {mode === 'signup' && <label className="form-group">الاسم الكامل<input className="input form-control" name="name" placeholder="أدخل اسمك الكامل" required /></label>}
           <label className="form-group">البريد الإلكتروني<input className="input form-control" name="email" type="email" placeholder="admin@example.com" defaultValue={mode === 'login' ? 'admin@example.com' : ''} required /></label>
           <label className="form-group">كلمة المرور<input className="input form-control" name="password" type="password" minLength={mode === 'signup' ? 6 : 1} maxLength={128} placeholder={mode === 'signup' ? '6 أحرف على الأقل' : 'كلمة المرور'} required /></label>
-          {mode === 'signup' && <CenterSelect centers={centers || []} required />}
+          {mode === 'signup' && <CenterSelect centers={centers} required />}
         </div>
         <button className={mode === 'signup' ? 'btn-signup' : 'btn-login'} disabled={loading}>{loading ? 'جاري التحميل...' : mode === 'login' ? 'تسجيل الدخول' : 'إنشاء الحساب'}</button>
         {error && <p className="error">{error}</p>}
@@ -401,6 +401,34 @@ function useData<T>(path: string, token?: string, initial: T | null = null, enab
   return { data, setData, error, load };
 }
 
+function pagedPath(path: string, page: number, pageSize: number, q?: string) {
+  const [base, query = ''] = path.split('?');
+  const params = new URLSearchParams(query);
+  params.set('page', String(page));
+  params.set('pageSize', String(pageSize));
+  if (q) params.set('q', q);
+  return `${base}?${params.toString()}`;
+}
+
+function usePaginatedData<T>(path: string, token?: string, pageSize = 20, q = '', enabled = true) {
+  const [page, setPage] = useState(1);
+  const requestPath = pagedPath(path, page, pageSize, q.trim() || undefined);
+  const { data, error, load } = useData<Paginated<T>>(requestPath, token, { items: [], page, pageSize, total: 0, totalPages: 1 }, enabled);
+  useEffect(() => setPage(1), [path, q, pageSize]);
+  return { data, items: data?.items || [], page: data?.page || page, totalPages: data?.totalPages || 1, setPage, error, load };
+}
+
+function PaginationControls({ page, totalPages, setPage }: { page: number; totalPages: number; setPage: (page: number) => void }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="actions" style={{ marginTop: 16 }}>
+      <button className="btn" type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>السابق</button>
+      <span className="muted">{page} / {totalPages}</span>
+      <button className="btn" type="button" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>التالي</button>
+    </div>
+  );
+}
+
 export function UserPage({ section }: { section: 'dashboard' | 'centers' | 'ideas' | 'challenges' | 'complaints' | 'reports' | 'settings' }) {
   const { token, user, setUser } = useSession(true);
   return (
@@ -471,9 +499,8 @@ function Stat({ title, value }: { title: string; value: number | string }) {
 }
 
 function CentersPage({ token, admin }: { token: string; admin: boolean }) {
-  const { data, load } = useData<Center[]>('/centers', token, []);
   const [q, setQ] = useState('');
-  const centers = useMemo(() => (data || []).filter((center) => `${center.name} ${center.location}`.includes(q)), [data, q]);
+  const { items: centers, load, page, totalPages, setPage } = usePaginatedData<Center>('/centers', token, 24, q);
 
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -498,6 +525,7 @@ function CentersPage({ token, admin }: { token: string; admin: boolean }) {
       <div className="grid cards" style={{ marginTop: 16 }}>
         {centers.map((center) => <CenterCard key={center.id} center={center} admin={admin} token={token} onDone={load} />)}
       </div>
+      <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
   );
 }
@@ -520,7 +548,7 @@ function CenterCard({ center, admin, token, onDone }: { center: Center; admin: b
 }
 
 function IdeasPage({ token, admin }: { token: string; admin: boolean }) {
-  const { data, load } = useData<Idea[]>('/ideas', token, []);
+  const { items: ideas, load, page, totalPages, setPage } = usePaginatedData<Idea>('/ideas', token, 20);
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -537,8 +565,9 @@ function IdeasPage({ token, admin }: { token: string; admin: boolean }) {
         <button className="btn primary">نشر الفكرة</button>
       </form>}
       <div className="grid cards" style={{ marginTop: 16 }}>
-        {(data || []).map((idea) => <IdeaCard key={idea.id} idea={idea} token={token} admin={admin} onDone={load} />)}
+        {ideas.map((idea) => <IdeaCard key={idea.id} idea={idea} token={token} admin={admin} onDone={load} />)}
       </div>
+      <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
   );
 }
@@ -568,7 +597,7 @@ function IdeaCard({ idea, token, admin, onDone }: { idea: Idea; token: string; a
 }
 
 function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
-  const { data, load } = useData<Challenge[]>('/challenges', token, []);
+  const { items: challenges, load, page, totalPages, setPage } = usePaginatedData<Challenge>('/challenges', token, 20);
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -588,8 +617,9 @@ function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
         <button className="btn primary">إضافة</button>
       </form>}
       <div className="grid cards" style={{ marginTop: 16 }}>
-        {(data || []).map((challenge) => <ChallengeCard key={challenge.id} challenge={challenge} token={token} admin={admin} onDone={load} />)}
+        {challenges.map((challenge) => <ChallengeCard key={challenge.id} challenge={challenge} token={token} admin={admin} onDone={load} />)}
       </div>
+      <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
   );
 }
@@ -616,7 +646,7 @@ function ChallengeCard({ challenge, token, admin, onDone }: { challenge: Challen
 }
 
 function ComplaintsPage({ token, admin }: { token: string; admin: boolean }) {
-  const { data, load } = useData<Complaint[]>('/complaints', token, []);
+  const { items: complaints, load, page, totalPages, setPage } = usePaginatedData<Complaint>('/complaints', token, 20);
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -634,8 +664,9 @@ function ComplaintsPage({ token, admin }: { token: string; admin: boolean }) {
         <button className="btn primary">إرسال</button>
       </form>}
       <div className="grid cards" style={{ marginTop: 16 }}>
-        {(data || []).map((complaint) => <ComplaintCard key={complaint.id} complaint={complaint} token={token} admin={admin} onDone={load} />)}
+        {complaints.map((complaint) => <ComplaintCard key={complaint.id} complaint={complaint} token={token} admin={admin} onDone={load} />)}
       </div>
+      <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
   );
 }
@@ -747,8 +778,8 @@ function AdminDashboard({ token }: { token: string }) {
 }
 
 function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }) {
-  const { data, load } = useData<User[]>('/users', token, []);
-  const { data: centers } = useData<Center[]>('/centers', token, []);
+  const { items: users, load, page, totalPages, setPage } = usePaginatedData<User>('/users', token, 20);
+  const { items: centers } = usePaginatedData<Center>('/centers', token, 100);
   const [editing, setEditing] = useState<User | null>(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -843,7 +874,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
         <select className="select" name="role">
           {allowedRoles.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
-        <CenterSelect centers={centers || []} />
+        <CenterSelect centers={centers} />
         <button className="btn primary" disabled={busy}>إضافة</button>
       </form>
       {message && <p className="error">{message}</p>}
@@ -854,7 +885,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
         <select className="select" name="role" defaultValue={editing.role}>
           {allowedRoles.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
-        <CenterSelect centers={centers || []} defaultValue={editing.centerId || ''} />
+        <CenterSelect centers={centers} defaultValue={editing.centerId || ''} />
         <input className="input" name="resetPassword" type="password" minLength={6} maxLength={128} placeholder="كلمة مرور جديدة (اختياري، 6 أحرف على الأقل)" />
         <label className="check-row"><input type="checkbox" name="isActive" defaultChecked={editing.isActive} /> حساب نشط</label>
         <button className="btn primary" disabled={busy}>حفظ</button>
@@ -863,8 +894,8 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
       <div className="panel table-wrap" style={{ marginTop: 16 }}>
         <table className="table">
           <thead><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>المركز</th><th>الحالة</th><th></th></tr></thead>
-          <tbody>{(data || []).map((user) => {
-            const center = (centers || []).find((item) => item.id === user.centerId);
+          <tbody>{users.map((user) => {
+            const center = centers.find((item) => item.id === user.centerId);
             return <tr key={user.id}>
               <td>{user.name}</td>
               <td>{user.email}</td>
@@ -881,12 +912,13 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
           })}</tbody>
         </table>
       </div>
+      <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
   );
 }
 
 function CenterUsersPage({ token }: { token: string }) {
-  const { data, error, load } = useData<User[]>('/users', token, []);
+  const { items: users, error, load, page, totalPages, setPage } = usePaginatedData<User>('/users', token, 20);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -923,7 +955,7 @@ function CenterUsersPage({ token }: { token: string }) {
       <div className="panel table-wrap" style={{ marginTop: 16 }}>
         <table className="table">
           <thead><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>الحالة</th><th>آخر دخول</th></tr></thead>
-          <tbody>{(data || []).map((user) => <tr key={user.id}>
+          <tbody>{users.map((user) => <tr key={user.id}>
             <td>{user.name}</td>
             <td>{user.email}</td>
             <td>{roleLabel(user.role)}</td>
@@ -932,6 +964,7 @@ function CenterUsersPage({ token }: { token: string }) {
           </tr>)}</tbody>
         </table>
       </div>
+      <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
   );
 }
@@ -970,9 +1003,9 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const isManager = canManageAccounts(currentUser.role);
-  const { data: centers } = useData<Center[]>('/centers', token, [], isManager);
+  const { items: centers } = usePaginatedData<Center>('/centers', token, 100, '', isManager);
   const { data: summary, load: loadSummary } = useData<MonthlyReportsSummary>(`/monthly-reports/summary?month=${month}`, token, null);
-  const { data: reports, load: loadReports } = useData<MonthlyReportRow[]>(`/monthly-reports?month=${month}`, token, []);
+  const { items: reports, load: loadReports, page: reportsPage, totalPages: reportsTotalPages, setPage: setReportsPage } = usePaginatedData<MonthlyReportRow>(`/monthly-reports?month=${month}`, token, 20);
 
   async function refresh() {
     await Promise.all([loadSummary(), loadReports()]);
@@ -1040,7 +1073,7 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
       </div>
 
       <form className="panel grid" onSubmit={upload} style={{ marginTop: 16 }}>
-        {isManager && <CenterSelect centers={centers || []} required />}
+        {isManager && <CenterSelect centers={centers} required />}
         <input className="input" name="file" type="file" accept=".xlsx" required />
         <button className="btn primary" disabled={loading}>{loading ? 'جاري الرفع...' : 'رفع ملف Excel'}</button>
         {message && <p className={message.includes('بنجاح') || message.includes('تم') ? 'muted' : 'error'}>{message}</p>}
@@ -1057,13 +1090,28 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
         <h3>بيانات المراكز</h3>
         <table className="table">
           <thead><tr><th>المركز</th><th>الشهر</th><th>الإيرادات</th><th>المصروفات</th><th>الندوات</th><th>الملف</th></tr></thead>
-          <tbody>{(reports || []).map((report) => <tr key={report.id}>
+          <tbody>{reports.map((report) => <tr key={report.id}>
             <td>{report.centerName}</td>
             <td>{report.month}</td>
             <td>{formatMoney(report.revenues)}</td>
             <td>{formatMoney(report.expenses)}</td>
             <td>{report.seminarsCount}</td>
             <td>{report.sourceFileName || '-'}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+      <PaginationControls page={reportsPage} totalPages={reportsTotalPages} setPage={setReportsPage} />
+
+      <div className="panel table-wrap" style={{ marginTop: 16 }}>
+        <h3>إحصائيات الأشهر الأخيرة</h3>
+        <table className="table">
+          <thead><tr><th>الشهر</th><th>الإيرادات</th><th>المصروفات</th><th>الندوات</th><th>المراكز</th></tr></thead>
+          <tbody>{(summary?.monthlyStatistics || []).map((item) => <tr key={item.month}>
+            <td>{item.month}</td>
+            <td>{formatMoney(item.totalRevenues)}</td>
+            <td>{formatMoney(item.totalExpenses)}</td>
+            <td>{item.totalSeminars}</td>
+            <td>{item.uploadedCenters}</td>
           </tr>)}</tbody>
         </table>
       </div>
@@ -1078,20 +1126,6 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
           <h3>أحدث عمليات الرفع</h3>
           {(summary?.latestUploads || []).map((upload) => <p key={upload.id} className="muted">{upload.originalName} - {upload.month || '-'} - {upload.status} - {upload.centerName || '-'}</p>)}
         </div>
-      </div>
-
-      <div className="panel table-wrap" style={{ marginTop: 16 }}>
-        <h3>إحصائيات الأشهر الأخيرة</h3>
-        <table className="table">
-          <thead><tr><th>الشهر</th><th>الإيرادات</th><th>المصروفات</th><th>الندوات</th><th>المراكز</th></tr></thead>
-          <tbody>{(summary?.monthlyStatistics || []).map((item) => <tr key={item.month}>
-            <td>{item.month}</td>
-            <td>{formatMoney(item.totalRevenues)}</td>
-            <td>{formatMoney(item.totalExpenses)}</td>
-            <td>{item.totalSeminars}</td>
-            <td>{item.uploadedCenters}</td>
-          </tr>)}</tbody>
-        </table>
       </div>
     </>
   );

@@ -10,6 +10,7 @@ import {
   complaintSchema,
   idParamSchema,
   ideaSchema,
+  paginationQuerySchema,
   passwordResetSchema,
   profileUpdateSchema,
   reportSchema,
@@ -22,6 +23,18 @@ import { AuthedRequest } from "../middleware/auth";
 import { ApiError } from "../errors/api-error";
 
 const idParam = (req: Request) => idParamSchema.parse(req.params).id;
+
+function paginationFrom(req: Request) {
+  return paginationQuerySchema.parse({ page: req.query.page, pageSize: req.query.pageSize, q: req.query.q });
+}
+
+function wantsPaginated(req: Request) {
+  return req.query.page !== undefined || req.query.pageSize !== undefined;
+}
+
+function mapPage<T, U>(page: { items: T[]; page: number; pageSize: number; total: number; totalPages: number }, map: (item: T) => U) {
+  return { ...page, items: page.items.map(map) };
+}
 
 async function hashPassword(password?: string) {
   return password ? bcrypt.hash(password, 12) : undefined;
@@ -70,7 +83,9 @@ export const usersController = {
   list: async (req: AuthedRequest, res: Response) => {
     const centerId = req.user?.role === "CENTER_MANAGER" ? req.user.centerId : undefined;
     if (req.user?.role === "CENTER_MANAGER" && !centerId) throw new ApiError(400, "No center is linked to this account", "CENTER_REQUIRED");
-    res.json((await db.users.list(centerId ? { centerId } : undefined)).map(publicUser));
+    const query = paginationFrom(req);
+    const filter = { ...(centerId ? { centerId } : {}), q: query.q };
+    res.json(wantsPaginated(req) ? mapPage(await db.users.listPage({ ...filter, page: query.page, pageSize: query.pageSize }), publicUser) : (await db.users.list(filter)).map(publicUser));
   },
   create: async (req: AuthedRequest, res: Response) => {
     const parsed = userAdminSchema.parse(req.body);
@@ -109,14 +124,17 @@ export const usersController = {
   delete: async (req: AuthedRequest, res: Response) => {
     await assertCanManageAccount(req, idParam(req));
     if (idParam(req) === req.user!.userId) throw new ApiError(400, "You cannot deactivate your own account", "SELF_DEACTIVATION_DENIED");
-    const user = await db.users.update(idParam(req), { isActive: false, status: "INACTIVE" });
+    const user = await db.users.delete(idParam(req), req.user!.userId);
     await db.activities.create(`Deactivated account ${user.email}`, req.user!.userId);
     res.json(publicUser(user));
   }
 };
 
 export const centersController = {
-  list: async (_: Request, res: Response) => res.json(await db.centers.list()),
+  list: async (req: Request, res: Response) => {
+    const query = paginationFrom(req);
+    res.json(wantsPaginated(req) ? await db.centers.listPage(query) : await db.centers.list({ q: query.q }));
+  },
   get: async (req: Request, res: Response) => {
     const center = await db.centers.get(idParam(req));
     if (!center) return res.status(404).json({ message: "Center not found" });
@@ -140,7 +158,10 @@ export const centersController = {
 };
 
 export const challengesController = {
-  list: async (req: AuthedRequest, res: Response) => res.json(await db.challenges.list(req.user?.userId)),
+  list: async (req: AuthedRequest, res: Response) => {
+    const query = paginationFrom(req);
+    res.json(wantsPaginated(req) ? await db.challenges.listPage({ userId: req.user?.userId, page: query.page, pageSize: query.pageSize }) : await db.challenges.list(req.user?.userId));
+  },
   get: async (req: AuthedRequest, res: Response) => {
     const challenge = await db.challenges.get(idParam(req), req.user?.userId);
     if (!challenge) return res.status(404).json({ message: "Challenge not found" });
@@ -169,7 +190,10 @@ export const challengesController = {
 };
 
 export const ideasController = {
-  list: async (_: Request, res: Response) => res.json(await db.ideas.list()),
+  list: async (req: Request, res: Response) => {
+    const query = paginationFrom(req);
+    res.json(wantsPaginated(req) ? await db.ideas.listPage({ page: query.page, pageSize: query.pageSize }) : await db.ideas.list());
+  },
   create: async (req: AuthedRequest, res: Response) => {
     const idea = await db.ideas.create(ideaSchema.parse(req.body), req.user!.userId);
     await db.activities.create(`Submitted idea ${idea.title}`, req.user!.userId);
@@ -191,7 +215,8 @@ export const ideasController = {
 export const complaintsController = {
   list: async (req: AuthedRequest, res: Response) => {
     const userId = isAdminRole(req.user?.role) ? undefined : req.user?.userId;
-    res.json(await db.complaints.list(userId));
+    const query = paginationFrom(req);
+    res.json(wantsPaginated(req) ? await db.complaints.listPage({ userId, page: query.page, pageSize: query.pageSize }) : await db.complaints.list(userId));
   },
   create: async (req: AuthedRequest, res: Response) => {
     const complaint = await db.complaints.create(complaintSchema.parse(req.body), req.user!.userId);
@@ -210,7 +235,8 @@ export const reportsController = {
   list: async (req: AuthedRequest, res: Response) => {
     const centerId = req.user?.role === "CENTER_MANAGER" ? req.user.centerId : undefined;
     if (req.user?.role === "CENTER_MANAGER" && !centerId) throw new ApiError(400, "No center is linked to this account", "CENTER_REQUIRED");
-    res.json(await db.reports.list(centerId ? { centerId } : undefined));
+    const query = paginationFrom(req);
+    res.json(wantsPaginated(req) ? await db.reports.listPage({ ...(centerId ? { centerId } : {}), page: query.page, pageSize: query.pageSize }) : await db.reports.list(centerId ? { centerId } : undefined));
   },
   create: async (req: AuthedRequest, res: Response) => {
     const data = reportSchema.parse(req.body);
@@ -223,7 +249,10 @@ export const reportsController = {
 };
 
 export const activitiesController = {
-  list: async (_: Request, res: Response) => res.json(await db.activities.list())
+  list: async (req: Request, res: Response) => {
+    const query = paginationFrom(req);
+    res.json(wantsPaginated(req) ? await db.activities.listPage({ page: query.page, pageSize: query.pageSize }) : await db.activities.list());
+  }
 };
 
 export const statsController = {

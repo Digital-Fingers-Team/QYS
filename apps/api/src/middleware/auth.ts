@@ -32,7 +32,7 @@ export async function auth(req: AuthedRequest, res: Response, next: NextFunction
     const payload = verifyToken(token);
     if (!payload?.userId) return res.status(401).json({ message: "Invalid token" });
     const user = await db.users.findAuthById(payload.userId);
-    if (!user || user.isActive === false) return res.status(401).json({ message: "Account is inactive" });
+    if (!user || user.isActive === false || user.deletedAt) return res.status(401).json({ message: "Account is inactive" });
     req.user = { userId: user.id, role: normalizeRole(user.role), centerId: user.centerId };
     next();
   } catch {
@@ -46,7 +46,7 @@ export async function optionalAuth(req: AuthedRequest, _res: Response, next: Nex
     const payload = verifyToken(token);
     if (!payload?.userId) return next();
     const user = await db.users.findAuthById(payload.userId);
-    if (user && user.isActive !== false) req.user = { userId: user.id, role: normalizeRole(user.role), centerId: user.centerId };
+    if (user && user.isActive !== false && !user.deletedAt) req.user = { userId: user.id, role: normalizeRole(user.role), centerId: user.centerId };
   } catch {}
   next();
 }

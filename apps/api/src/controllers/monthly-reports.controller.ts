@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { monthlyReportQuerySchema } from "@qys/shared";
+import { monthlyReportQuerySchema, paginationQuerySchema } from "@qys/shared";
 import { ApiError } from "../errors/api-error";
 import { AuthedRequest } from "../middleware/auth";
 import { buildMonthlyReportWorkbook, buildMonthlyTemplateWorkbook } from "../services/monthly-report-export.service";
@@ -8,6 +8,14 @@ import { db } from "../db";
 
 function monthFromQuery(req: AuthedRequest) {
   return monthlyReportQuerySchema.parse({ month: req.query.month }).month;
+}
+
+function paginationFromQuery(req: AuthedRequest) {
+  return paginationQuerySchema.parse({ page: req.query.page, pageSize: req.query.pageSize });
+}
+
+function wantsPaginated(req: AuthedRequest) {
+  return req.query.page !== undefined || req.query.pageSize !== undefined;
 }
 
 function excelResponse(res: Response, filename: string, buffer: Buffer) {
@@ -31,13 +39,13 @@ export const monthlyReportsController = {
     res.status(201).json(await uploadMonthlyReport(req));
   },
   list: async (req: AuthedRequest, res: Response) => {
-    res.json(await listMonthlyReports(monthFromQuery(req), req));
+    res.json(await listMonthlyReports(monthFromQuery(req), req, wantsPaginated(req) ? paginationFromQuery(req) : undefined));
   },
   summary: async (req: AuthedRequest, res: Response) => {
-    res.json(await monthlySummary(monthFromQuery(req), req));
+    res.json(await monthlySummary(monthFromQuery(req), req, paginationFromQuery(req)));
   },
   uploads: async (req: AuthedRequest, res: Response) => {
-    res.json(await listMonthlyUploads(monthFromQuery(req), req));
+    res.json(await listMonthlyUploads(monthFromQuery(req), req, wantsPaginated(req) ? paginationFromQuery(req) : undefined));
   },
   export: async (req: AuthedRequest, res: Response) => {
     const month = monthFromQuery(req);

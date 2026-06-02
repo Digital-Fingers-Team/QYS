@@ -1,5 +1,5 @@
 import path from "path";
-import { monthlyReportUploadBodySchema, MonthlyReportsSummary } from "@qys/shared";
+import { monthlyReportUploadBodySchema, MonthlyReportsSummary, PaginationQueryInput } from "@qys/shared";
 import { adminRoles } from "../auth/rbac";
 import { db, CenterRecord } from "../db";
 import { ApiError } from "../errors/api-error";
@@ -140,14 +140,37 @@ export async function uploadMonthlyReport(req: AuthedRequest) {
   };
 }
 
-export async function listMonthlyReports(month: string, req: AuthedRequest) {
+export async function listMonthlyReports(month: string, req: AuthedRequest, pagination?: PaginationQueryInput) {
   const centerId = req.user?.role === "CENTER_MANAGER" ? req.user.centerId ?? undefined : undefined;
   if (req.user?.role === "CENTER_MANAGER" && !centerId) throw new ApiError(400, "لا يوجد مركز مرتبط بهذا الحساب.", "CENTER_REQUIRED");
+  if (pagination) return db.monthlyReports.listPage({ month, centerId, page: pagination.page, pageSize: pagination.pageSize });
   return db.monthlyReports.list({ month, centerId });
 }
 
-export async function monthlySummary(month: string, req: AuthedRequest): Promise<MonthlyReportsSummary> {
-  const centerScope = req.user?.role === "CENTER_MANAGER" ? req.user.centerId ?? undefined : undefined;
+export async function monthlySummary(month: string, req: AuthedRequest, pagination: PaginationQueryInput): Promise<MonthlyReportsSummary> {
+  {
+    const centerScope = req.user?.role === "CENTER_MANAGER" ? req.user.centerId ?? undefined : undefined;
+    const [summary, missingCenters, latestUploads, monthlyStatistics] = await Promise.all([
+      db.monthlyReports.summary({ month, centerId: centerScope }),
+      db.monthlyReports.missingCenters({ month, centerId: centerScope, page: pagination.page, pageSize: pagination.pageSize }),
+      db.uploadedFiles.list({ month, centerId: centerScope, limit: 8 }),
+      db.monthlyReports.statistics(6)
+    ]);
+    return {
+      month,
+      totalRevenues: summary.totalRevenues,
+      totalExpenses: summary.totalExpenses,
+      totalSeminars: summary.totalSeminars,
+      uploadedCenters: summary.uploadedCenterIds.length,
+      missingCenters: missingCenters.items,
+      missingCentersTotal: missingCenters.total,
+      missingCentersPage: missingCenters.page,
+      missingCentersPageSize: missingCenters.pageSize,
+      latestUploads,
+      monthlyStatistics
+    };
+  }
+  const centerScope = req.user?.role === "CENTER_MANAGER" ? req.user?.centerId ?? undefined : undefined;
   const [allCenters, reports, latestUploads, monthlyStatistics] = await Promise.all([
     db.centers.list(),
     db.monthlyReports.list({ month, centerId: centerScope }),
@@ -163,13 +186,17 @@ export async function monthlySummary(month: string, req: AuthedRequest): Promise
     totalSeminars: reports.reduce((total, report) => total + report.seminarsCount, 0),
     uploadedCenters: uploaded.size,
     missingCenters: centers.filter((center) => !uploaded.has(center.id)).map((center) => ({ id: center.id, name: center.name, location: center.location })),
+    missingCentersTotal: centers.filter((center) => !uploaded.has(center.id)).length,
+    missingCentersPage: 1,
+    missingCentersPageSize: centers.length,
     latestUploads,
     monthlyStatistics
   };
 }
 
-export async function listMonthlyUploads(month: string, req: AuthedRequest) {
+export async function listMonthlyUploads(month: string, req: AuthedRequest, pagination?: PaginationQueryInput) {
   const centerId = req.user?.role === "CENTER_MANAGER" ? req.user.centerId ?? undefined : undefined;
+  if (pagination) return db.uploadedFiles.listPage({ month, centerId, page: pagination.page, pageSize: pagination.pageSize });
   return db.uploadedFiles.list({ month, centerId, limit: 50 });
 }
 

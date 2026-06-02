@@ -89,10 +89,25 @@ export const reportSchema = z.object({
 }).strict();
 export const monthSchema = MonthSchema;
 export const monthlyReportQuerySchema = z.object({ month: monthSchema }).strict();
+export const paginationQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(20),
+    q: z.string().trim().max(160).optional()
+  })
+  .strict();
 export const monthlyReportUploadBodySchema = z.object({
   centerId: z.coerce.number().int().positive().optional(),
   replace: z.coerce.boolean().default(false)
 }).strict();
+
+export type Paginated<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
 
 export type MonthlyReportRow = {
   id: number;
@@ -131,6 +146,9 @@ export type MonthlyReportsSummary = {
   totalSeminars: number;
   uploadedCenters: number;
   missingCenters: Array<{ id: number; name: string; location: string }>;
+  missingCentersTotal: number;
+  missingCentersPage: number;
+  missingCentersPageSize: number;
   latestUploads: MonthlyUploadItem[];
   monthlyStatistics: Array<{
     month: string;
@@ -164,4 +182,5 @@ export type StatusUpdateInput = z.infer<typeof statusUpdateSchema>;
 export type ReportInput = z.infer<typeof reportSchema>;
 export type Role = z.infer<typeof RoleSchema>;
 export type MonthlyReportQueryInput = z.infer<typeof monthlyReportQuerySchema>;
+export type PaginationQueryInput = z.infer<typeof paginationQuerySchema>;
 export type MonthlyReportUploadBodyInput = z.infer<typeof monthlyReportUploadBodySchema>;
