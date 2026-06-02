@@ -26,10 +26,12 @@ export function rejectUnexpectedQuery(req: Request, _res: Response, next: NextFu
     "/monthly-reports/summary",
     "/monthly-reports/uploads",
     "/monthly-reports/export",
+    "/monthly-reports/template",
     "/api/monthly-reports",
     "/api/monthly-reports/summary",
     "/api/monthly-reports/uploads",
-    "/api/monthly-reports/export"
+    "/api/monthly-reports/export",
+    "/api/monthly-reports/template"
   ]);
   if (monthlyPaths.has(req.path) && keys.length === 1 && keys[0] === "month") return next();
 
