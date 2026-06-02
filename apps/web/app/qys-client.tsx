@@ -1026,7 +1026,7 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
   return (
     <>
       <Header title="التقارير الشهرية" subtitle="رفع ملف Excel للمركز وتجميع بيانات الشهر تلقائياً." />
-      <div className="panel form-grid">
+      <div className="panel form-grid reports-toolbar">
         {isManager && <div className="actions">
           <button className={`btn ${month === currentMonthValue() ? 'primary' : ''}`} type="button" onClick={() => setMonth(currentMonthValue())}>الشهر الحالي</button>
           <button className={`btn ${month === previousMonthValue() ? 'primary' : ''}`} type="button" onClick={() => setMonth(previousMonthValue())}>الشهر الماضي</button>

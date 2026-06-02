@@ -526,6 +526,29 @@ h6 {
   gap: 12px;
 }
 
+.reports-toolbar {
+  align-items: end;
+  grid-template-columns: max-content minmax(170px, 210px) max-content max-content;
+  gap: 10px;
+  padding: 14px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.reports-toolbar .actions {
+  display: flex;
+  gap: 8px;
+}
+
+.reports-toolbar .grid {
+  gap: 5px;
+}
+
+.reports-toolbar .btn,
+.reports-toolbar .input {
+  min-height: 34px;
+}
+
 .form-group {
   display: grid;
   gap: 6px;
@@ -928,6 +951,15 @@ tr:hover td {
 }
 
 @media (max-width: 768px) {
+  .reports-toolbar {
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .reports-toolbar .actions {
+    flex-wrap: wrap;
+  }
+
   .page-header,
   .topbar {
     flex-direction: column;
