@@ -239,7 +239,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         <div className="auth-fields">
           {mode === 'signup' && <label className="form-group">الاسم الكامل<input className="input form-control" name="name" placeholder="أدخل اسمك الكامل" required /></label>}
           <label className="form-group">البريد الإلكتروني<input className="input form-control" name="email" type="email" placeholder="admin@example.com" defaultValue={mode === 'login' ? 'admin@example.com' : ''} required /></label>
-          <label className="form-group">كلمة المرور<input className="input form-control" name="password" type="password" placeholder="كلمة المرور" required /></label>
+          <label className="form-group">كلمة المرور<input className="input form-control" name="password" type="password" minLength={mode === 'signup' ? 6 : 1} maxLength={128} placeholder={mode === 'signup' ? '6 أحرف على الأقل' : 'كلمة المرور'} required /></label>
           {mode === 'signup' && <CenterSelect centers={centers || []} required />}
         </div>
         <button className={mode === 'signup' ? 'btn-signup' : 'btn-login'} disabled={loading}>{loading ? 'جاري التحميل...' : mode === 'login' ? 'تسجيل الدخول' : 'إنشاء الحساب'}</button>
@@ -693,8 +693,8 @@ function SettingsPage({ token, user, setUser }: { token: string; user: User; set
         <button className="btn primary">حفظ</button>
       </form>
       <form className="panel grid" onSubmit={changePassword} style={{ marginTop: 16 }}>
-        <input className="input" name="currentPassword" type="password" placeholder="كلمة المرور الحالية" required />
-        <input className="input" name="newPassword" type="password" placeholder="كلمة المرور الجديدة" required />
+        <input className="input" name="currentPassword" type="password" maxLength={128} placeholder="كلمة المرور الحالية" required />
+        <input className="input" name="newPassword" type="password" minLength={6} maxLength={128} placeholder="كلمة مرور جديدة (6 أحرف على الأقل)" required />
         <button className="btn primary">تغيير كلمة المرور</button>
         {passwordMessage && <p className={passwordMessage.includes('نجاح') ? 'muted' : 'error'}>{passwordMessage}</p>}
       </form>
@@ -838,7 +838,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
       <form className="panel form-grid" onSubmit={create}>
         <input className="input" name="name" placeholder="الاسم" required />
         <input className="input" name="email" type="email" placeholder="البريد" required />
-        <input className="input" name="password" placeholder="كلمة المرور المؤقتة" required />
+        <input className="input" name="password" type="password" minLength={6} maxLength={128} placeholder="كلمة مرور مؤقتة (6 أحرف على الأقل)" required />
         <input className="input" name="points" type="number" placeholder="النقاط" />
         <select className="select" name="role">
           {allowedRoles.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -855,7 +855,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
           {allowedRoles.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
         <CenterSelect centers={centers || []} defaultValue={editing.centerId || ''} />
-        <input className="input" name="resetPassword" placeholder="كلمة مرور جديدة (اختياري)" />
+        <input className="input" name="resetPassword" type="password" minLength={6} maxLength={128} placeholder="كلمة مرور جديدة (اختياري، 6 أحرف على الأقل)" />
         <label className="check-row"><input type="checkbox" name="isActive" defaultChecked={editing.isActive} /> حساب نشط</label>
         <button className="btn primary" disabled={busy}>حفظ</button>
         <button className="btn" type="button" onClick={() => setEditing(null)}>إلغاء</button>
@@ -915,7 +915,7 @@ function CenterUsersPage({ token }: { token: string }) {
       <form className="panel form-grid" onSubmit={create}>
         <input className="input" name="name" placeholder="اسم المستخدم" required />
         <input className="input" name="email" type="email" placeholder="البريد الإلكتروني" required />
-        <input className="input" name="password" placeholder="كلمة المرور المؤقتة" required />
+        <input className="input" name="password" type="password" minLength={6} maxLength={128} placeholder="كلمة مرور مؤقتة (6 أحرف على الأقل)" required />
         <button className="btn primary" disabled={loading}>{loading ? 'جاري الإضافة...' : 'إضافة مستخدم للمركز'}</button>
       </form>
       {message && <p className="error">{message}</p>}

@@ -25,7 +25,7 @@ export const idParamSchema = z.object({ id: z.coerce.number().int().positive() }
 export const authRegisterSchema = z.object({
   name: text(2, 120),
   email: z.string().trim().toLowerCase().email().max(254),
-  password: z.string().min(12).max(128),
+  password: z.string().min(6, "Password must be at least 6 characters.").max(128),
   centerId: z.number().int().positive()
 }).strict();
 export const authLoginSchema = z.object({
@@ -34,7 +34,7 @@ export const authLoginSchema = z.object({
 }).strict();
 export const passwordChangeSchema = z.object({
   currentPassword: z.string().min(1).max(128),
-  newPassword: z.string().min(12).max(128)
+  newPassword: z.string().min(6, "Password must be at least 6 characters.").max(128)
 }).strict();
 export const profileUpdateSchema = z.object({
   name: text(2, 120).optional(),
@@ -45,7 +45,7 @@ export const profileUpdateSchema = z.object({
 export const userAdminSchema = z.object({
   name: text(2, 120),
   email: z.string().trim().toLowerCase().email().max(254),
-  password: z.string().min(12).max(128),
+  password: z.string().min(6, "Password must be at least 6 characters.").max(128),
   role: RoleSchema.default("USER"),
   centerId: z.number().int().positive().nullable().optional(),
   points: z.number().int().nonnegative().default(0),
@@ -53,7 +53,7 @@ export const userAdminSchema = z.object({
   isActive: z.boolean().default(true)
 }).strict();
 export const userAdminUpdateSchema = userAdminSchema.partial();
-export const passwordResetSchema = z.object({ password: z.string().min(12).max(128) }).strict();
+export const passwordResetSchema = z.object({ password: z.string().min(6, "Password must be at least 6 characters.").max(128) }).strict();
 
 export const centerSchema = z.object({
   name: text(2, 160),

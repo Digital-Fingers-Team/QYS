@@ -24,7 +24,9 @@ export class ApiClientError extends Error {
 
 async function errorFromResponse(res: Response) {
   const payload = await res.json().catch(() => ({ message: `Request failed (${res.status})` }));
-  return new ApiClientError(res.status, payload.message || `Request failed (${res.status})`, payload.code, payload.details);
+  const fieldErrors = payload.details?.fieldErrors as Record<string, string[] | undefined> | undefined;
+  const firstFieldError = fieldErrors ? Object.values(fieldErrors).flat().find(Boolean) : undefined;
+  return new ApiClientError(res.status, firstFieldError || payload.message || `Request failed (${res.status})`, payload.code, payload.details);
 }
 
 function apiPath(path: string) {

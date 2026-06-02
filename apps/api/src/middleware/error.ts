@@ -14,7 +14,9 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   }
 
   if (err instanceof ZodError) {
-    return res.status(400).json({ message: "Invalid request data.", code: "VALIDATION_ERROR", details: err.flatten() });
+    const details = err.flatten();
+    const firstFieldError = Object.values(details.fieldErrors).flat()[0];
+    return res.status(400).json({ message: firstFieldError || "Invalid request data.", code: "VALIDATION_ERROR", details });
   }
 
   if (err instanceof SyntaxError && "body" in err) {
