@@ -3,68 +3,19 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import type { MonthlyReportRow, MonthlyReportsSummary, Paginated } from '@qys/shared';
+import type { MonthlyReportRow, MonthlyReportsSummary } from '@qys/shared';
 import { api, apiForm, ApiClientError, downloadApi } from '../lib/api';
-
-type Role = 'DIRECTORATE_MANAGER' | 'CENTER_MANAGER' | 'USER';
-type User = {
-  id: number;
-  name: string;
-  email: string;
-  role: Role;
-  centerId?: number | null;
-  createdBy?: number | null;
-  isActive: boolean;
-  lastLogin?: string | null;
-  points: number;
-  status: string;
-  avatar?: string | null;
-  language: 'ar' | 'en';
-  theme: 'light' | 'dark';
-};
-type Center = { id: number; name: string; location: string; rating?: number; type: string; image?: string; description: string };
-type Challenge = { id: number; title: string; description: string; reward: number; status: string; category: string; participants: number; deadline: string; joined?: boolean; _count?: { participations: number } };
-type Idea = { id: number; userId: number; title: string; description: string; status: string; votes: number; createdAt: string; user?: { name: string } };
-type Complaint = { id: number; userId: number; title: string; description: string; type: string; status: string; createdAt: string; user?: { name: string } };
-type Activity = { id: number; action: string; userName?: string; timestamp: string };
-type Report = { id: number; title: string; type: string; content: string; status: string; date: string; userId?: number | null; centerId?: number | null };
-type MonthlyReportUploadResponse = { replaced: boolean; message: string; report: MonthlyReportRow };
-
-const storageKey = 'qys_session';
+import { field, num, useData, usePaginatedData } from './qys/data';
+import { canAccessReports, canManageAccounts, canOpenAdmin, roleLabel, roleOptionsFor } from './qys/permissions';
+import { useSession, writeSession } from './qys/session';
+import { Header, PaginationControls } from './qys/shared-ui';
+import type { Activity, Center, Challenge, Complaint, Idea, MonthlyReportUploadResponse, Report, Role, User } from './qys/types';
 
 const roleOptions: Array<{ value: Role; label: string }> = [
   { value: 'USER', label: 'مستخدم' },
   { value: 'CENTER_MANAGER', label: 'مسؤول مركز' },
   { value: 'DIRECTORATE_MANAGER', label: 'مدير مديرية' }
 ];
-const adminRoles: Role[] = ['DIRECTORATE_MANAGER'];
-const managementRoles: Role[] = [...adminRoles, 'CENTER_MANAGER'];
-
-function roleLabel(role: Role) {
-  return roleOptions.find((option) => option.value === role)?.label || role;
-}
-
-function canOpenAdmin(role?: Role) {
-  return canManageAccounts(role);
-}
-
-function canManageAccounts(role?: Role) {
-  return Boolean(role && adminRoles.includes(role));
-}
-
-function canAccessReports(role?: Role) {
-  return Boolean(role && managementRoles.includes(role));
-}
-
-function canAssignRole(actorRole: Role | undefined, targetRole: Role) {
-  if (actorRole === 'DIRECTORATE_MANAGER') return ['CENTER_MANAGER', 'USER'].includes(targetRole);
-  return false;
-}
-
-function roleOptionsFor(actorRole?: Role) {
-  return roleOptions.filter((option) => canAssignRole(actorRole, option.value));
-}
-
 const labels = {
   ar: {
     login: 'تسجيل الدخول',
@@ -109,75 +60,6 @@ const labels = {
     search: 'Search'
   }
 };
-
-function readSession(): { token: string; user: User } | null {
-  if (typeof window === 'undefined') return null;
-  const saved = window.sessionStorage.getItem(storageKey);
-  if (!saved) return null;
-  try {
-    return JSON.parse(saved);
-  } catch {
-    window.sessionStorage.removeItem(storageKey);
-    return null;
-  }
-}
-
-function writeSession(token: string, user: User) {
-  window.sessionStorage.setItem(storageKey, JSON.stringify({ token, user }));
-}
-
-function useSession(required = true) {
-  const router = useRouter();
-  const [token, setToken] = useState('');
-  const [user, setUser] = useState<User | null>(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    const saved = readSession();
-    if (!saved) {
-      setReady(true);
-      if (required) router.replace('/login');
-      return;
-    }
-    setToken(saved.token);
-    setUser(saved.user);
-    api<User>('/auth/me', undefined, saved.token)
-      .then((me) => {
-        setUser(me);
-        writeSession(saved.token, me);
-      })
-      .catch(() => {
-        window.sessionStorage.removeItem(storageKey);
-        router.replace('/login');
-      })
-      .finally(() => setReady(true));
-  }, [required, router]);
-
-  useEffect(() => {
-    if (!user) return;
-    document.documentElement.dataset.theme = user.theme || 'light';
-    document.documentElement.dir = user.language === 'en' ? 'ltr' : 'rtl';
-    document.documentElement.lang = user.language || 'ar';
-  }, [user]);
-
-  function logout() {
-    window.sessionStorage.removeItem(storageKey);
-    setToken('');
-    setUser(null);
-    router.replace('/login');
-  }
-
-  return { token, user, setUser, ready, logout };
-}
-
-function field(form: HTMLFormElement, name: string) {
-  return String(new FormData(form).get(name) || '').trim();
-}
-
-function num(form: HTMLFormElement, name: string) {
-  const value = field(form, name);
-  return value ? Number(value) : undefined;
-}
 
 function CenterSelect({ centers, defaultValue = '', required = false }: { centers: Center[]; defaultValue?: number | string | null; required?: boolean }) {
   const [query, setQuery] = useState('');
@@ -376,55 +258,6 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
         </header>
         <div className="content-wrapper">{children}</div>
       </main>
-    </div>
-  );
-}
-
-function Header({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <div className="page-header fade-in">
-      <div>
-        <h1>{title}</h1>
-        {subtitle && <p className="muted">{subtitle}</p>}
-      </div>
-    </div>
-  );
-}
-
-function useData<T>(path: string, token?: string, initial: T | null = null, enabled = true) {
-  const [data, setData] = useState<T | null>(initial);
-  const [error, setError] = useState('');
-  const load = () => enabled ? api<T>(path, undefined, token).then(setData).catch((err) => setError((err as Error).message)) : Promise.resolve();
-  useEffect(() => {
-    if (token !== undefined && enabled) load();
-  }, [path, token, enabled]);
-  return { data, setData, error, load };
-}
-
-function pagedPath(path: string, page: number, pageSize: number, q?: string) {
-  const [base, query = ''] = path.split('?');
-  const params = new URLSearchParams(query);
-  params.set('page', String(page));
-  params.set('pageSize', String(pageSize));
-  if (q) params.set('q', q);
-  return `${base}?${params.toString()}`;
-}
-
-function usePaginatedData<T>(path: string, token?: string, pageSize = 20, q = '', enabled = true) {
-  const [page, setPage] = useState(1);
-  const requestPath = pagedPath(path, page, pageSize, q.trim() || undefined);
-  const { data, error, load } = useData<Paginated<T>>(requestPath, token, { items: [], page, pageSize, total: 0, totalPages: 1 }, enabled);
-  useEffect(() => setPage(1), [path, q, pageSize]);
-  return { data, items: data?.items || [], page: data?.page || page, totalPages: data?.totalPages || 1, setPage, error, load };
-}
-
-function PaginationControls({ page, totalPages, setPage }: { page: number; totalPages: number; setPage: (page: number) => void }) {
-  if (totalPages <= 1) return null;
-  return (
-    <div className="actions" style={{ marginTop: 16 }}>
-      <button className="btn" type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>السابق</button>
-      <span className="muted">{page} / {totalPages}</span>
-      <button className="btn" type="button" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>التالي</button>
     </div>
   );
 }
