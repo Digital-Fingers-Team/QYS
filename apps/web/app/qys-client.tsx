@@ -937,7 +937,17 @@ function CenterUsersPage({ token }: { token: string }) {
 }
 
 function currentMonthValue() {
-  return new Date().toISOString().slice(0, 7);
+  return monthValue(new Date());
+}
+
+function previousMonthValue() {
+  const date = new Date();
+  date.setMonth(date.getMonth() - 1);
+  return monthValue(date);
+}
+
+function monthValue(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
 function formatMoney(value: number) {
@@ -984,7 +994,11 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
       const result = await apiForm<MonthlyReportUploadResponse>('/monthly-reports/upload', data, token);
       form.reset();
       setMessage(result.message);
-      await refresh();
+      if (result.report.month !== month) {
+        setMonth(result.report.month);
+      } else {
+        await refresh();
+      }
     } catch (err) {
       if (err instanceof ApiClientError && err.code === 'DUPLICATE_REPORT' && !replace) {
         const confirmed = window.confirm('يوجد تقرير لهذا المركز في نفس الشهر. هل تريد استبداله بالملف الجديد؟');
@@ -1013,11 +1027,15 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
     <>
       <Header title="التقارير الشهرية" subtitle="رفع ملف Excel للمركز وتجميع بيانات الشهر تلقائياً." />
       <div className="panel form-grid">
+        {isManager && <div className="actions">
+          <button className={`btn ${month === currentMonthValue() ? 'primary' : ''}`} type="button" onClick={() => setMonth(currentMonthValue())}>الشهر الحالي</button>
+          <button className={`btn ${month === previousMonthValue() ? 'primary' : ''}`} type="button" onClick={() => setMonth(previousMonthValue())}>الشهر الماضي</button>
+        </div>}
         <label className="grid">
           <span className="muted">الشهر</span>
           <input className="input" type="month" value={month} onChange={(e) => setMonth(e.target.value || currentMonthValue())} />
         </label>
-        <button className="btn" type="button" onClick={() => download('/monthly-reports/template')}>تحميل القالب</button>
+        <button className="btn" type="button" onClick={() => download(`/monthly-reports/template?month=${month}`)}>تحميل القالب</button>
         {isManager && <button className="btn primary" type="button" onClick={() => download(`/monthly-reports/export?month=${month}`)}>Download Monthly Report</button>}
       </div>
 
@@ -1058,7 +1076,7 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
         </div>
         <div className="panel">
           <h3>أحدث عمليات الرفع</h3>
-          {(summary?.latestUploads || []).map((upload) => <p key={upload.id} className="muted">{upload.originalName} - {upload.status} - {upload.centerName || '-'}</p>)}
+          {(summary?.latestUploads || []).map((upload) => <p key={upload.id} className="muted">{upload.originalName} - {upload.month || '-'} - {upload.status} - {upload.centerName || '-'}</p>)}
         </div>
       </div>
 
