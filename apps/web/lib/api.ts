@@ -27,8 +27,17 @@ async function errorFromResponse(res: Response) {
   return new ApiClientError(res.status, payload.message || `Request failed (${res.status})`, payload.code, payload.details);
 }
 
+function apiPath(path: string) {
+  if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\')) throw new ApiClientError(400, 'Invalid API path');
+  return `${API_URL}${path}`;
+}
+
+function safeDownloadName(name: string) {
+  return name.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 120) || 'download.xlsx';
+}
+
 export async function api<T>(path: string, init?: RequestInit, token?: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(apiPath(path), {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -46,7 +55,7 @@ export async function api<T>(path: string, init?: RequestInit, token?: string): 
 }
 
 export async function apiForm<T>(path: string, form: FormData, token?: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(apiPath(path), {
     method: 'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     body: form
@@ -56,12 +65,12 @@ export async function apiForm<T>(path: string, form: FormData, token?: string): 
 }
 
 export async function downloadApi(path: string, token?: string) {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(apiPath(path), {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined
   });
   if (!res.ok) throw await errorFromResponse(res);
   const blob = await res.blob();
   const disposition = res.headers.get('Content-Disposition') || '';
   const match = disposition.match(/filename="([^"]+)"/);
-  return { blob, filename: match?.[1] || 'download.xlsx' };
+  return { blob, filename: safeDownloadName(match?.[1] || 'download.xlsx') };
 }

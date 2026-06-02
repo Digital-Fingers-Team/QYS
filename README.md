@@ -69,7 +69,15 @@ The reports area now supports production monthly Excel aggregation:
 - Managers can download the official master workbook from the same reports page.
 
 Optional API env:
-- `EXCEL_MAX_UPLOAD_MB`: maximum Excel upload size in MB, defaults to `10`.
+- `EXCEL_MAX_UPLOAD_MB`: maximum `.xlsx` upload size in MB, defaults to `5` and is capped at `10`.
+- `JWT_EXPIRES_IN`: bearer token lifetime, defaults to `8h`.
+- `JWT_ISSUER` / `JWT_AUDIENCE`: enforced during JWT verification.
+- `TRUST_PROXY`: set to `true` behind Railway or another trusted HTTPS proxy.
+
+Security notes:
+- Production must set `FRONTEND_URL` or `CORS_ORIGIN` to explicit HTTPS origins. Wildcards and localhost production CORS are rejected at startup.
+- `JWT_SECRET` must be at least 32 characters and must not be a placeholder.
+- Monthly report uploads accept `.xlsx` only; legacy `.xls` files are rejected.
 
 ## Database seed
 ```bash
@@ -77,9 +85,11 @@ pnpm db:seed
 ```
 
 Seeded development credentials:
-- Directorate manager: `admin@example.com` / `admin123`
-- Center manager: `center@example.com` / `center123`
-- Public user: `user@example.com` / `user123`
+- Directorate manager: `admin@example.com` / `AdminDevPass!2026`
+- Center manager: `center@example.com` / `CenterDevPass!2026`
+- Public user: `user@example.com` / `UserDevPass!2026`
+
+Override these with `SEED_ADMIN_PASSWORD`, `SEED_CENTER_PASSWORD`, and `SEED_USER_PASSWORD` before seeding shared environments.
 
 ## Development commands
 ```bash
@@ -100,7 +110,7 @@ pnpm --filter @qys/web start
 1. Create Railway project and configure a MongoDB connection string.
 2. Set service for `apps/api` and another for `apps/web`.
 3. Add env vars:
-   - API: `MONGODB_URL`, `JWT_SECRET`, `PORT`, `CORS_ORIGIN`
+   - API: `MONGODB_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `JWT_ISSUER`, `JWT_AUDIENCE`, `PORT`, `FRONTEND_URL`, `CORS_ORIGIN`, `TRUST_PROXY=true`
    - Web: `NEXT_PUBLIC_API_URL`
 4. Build commands:
    - API: `pnpm install && pnpm run build:api`

@@ -112,12 +112,18 @@ const labels = {
 
 function readSession(): { token: string; user: User } | null {
   if (typeof window === 'undefined') return null;
-  const saved = window.localStorage.getItem(storageKey);
-  return saved ? JSON.parse(saved) : null;
+  const saved = window.sessionStorage.getItem(storageKey);
+  if (!saved) return null;
+  try {
+    return JSON.parse(saved);
+  } catch {
+    window.sessionStorage.removeItem(storageKey);
+    return null;
+  }
 }
 
 function writeSession(token: string, user: User) {
-  window.localStorage.setItem(storageKey, JSON.stringify({ token, user }));
+  window.sessionStorage.setItem(storageKey, JSON.stringify({ token, user }));
 }
 
 function useSession(required = true) {
@@ -141,7 +147,7 @@ function useSession(required = true) {
         writeSession(saved.token, me);
       })
       .catch(() => {
-        window.localStorage.removeItem(storageKey);
+        window.sessionStorage.removeItem(storageKey);
         router.replace('/login');
       })
       .finally(() => setReady(true));
@@ -155,7 +161,7 @@ function useSession(required = true) {
   }, [user]);
 
   function logout() {
-    window.localStorage.removeItem(storageKey);
+    window.sessionStorage.removeItem(storageKey);
     setToken('');
     setUser(null);
     router.replace('/login');
@@ -233,7 +239,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         <div className="auth-fields">
           {mode === 'signup' && <label className="form-group">الاسم الكامل<input className="input form-control" name="name" placeholder="أدخل اسمك الكامل" required /></label>}
           <label className="form-group">البريد الإلكتروني<input className="input form-control" name="email" type="email" placeholder="admin@example.com" defaultValue={mode === 'login' ? 'admin@example.com' : ''} required /></label>
-          <label className="form-group">كلمة المرور<input className="input form-control" name="password" type="password" placeholder="admin123" defaultValue={mode === 'login' ? 'admin123' : ''} required /></label>
+          <label className="form-group">كلمة المرور<input className="input form-control" name="password" type="password" placeholder="كلمة المرور" required /></label>
           {mode === 'signup' && <CenterSelect centers={centers || []} required />}
         </div>
         <button className={mode === 'signup' ? 'btn-signup' : 'btn-login'} disabled={loading}>{loading ? 'جاري التحميل...' : mode === 'login' ? 'تسجيل الدخول' : 'إنشاء الحساب'}</button>
@@ -553,9 +559,9 @@ function IdeaCard({ idea, token, admin, onDone }: { idea: Idea; token: string; a
       <p>{idea.description}</p>
       <button className="btn" onClick={vote}>تصويت ({idea.votes})</button>
       {admin && <select className="select" style={{ marginTop: 10 }} value={idea.status} onChange={(e) => status(e.target.value)}>
-        <option>تحت الدراسة</option>
-        <option>مقبولة</option>
-        <option>مرفوضة</option>
+        <option value="PENDING">تحت الدراسة</option>
+        <option value="RESOLVED">مقبولة</option>
+        <option value="REJECTED">مرفوضة</option>
       </select>}
     </article>
   );
@@ -566,7 +572,7 @@ function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    await api('/challenges', { method: 'POST', body: JSON.stringify({ title: field(form, 'title'), description: field(form, 'description'), reward: num(form, 'reward') || 0, category: field(form, 'category'), deadline: field(form, 'deadline'), status: 'نشط' }) }, token);
+    await api('/challenges', { method: 'POST', body: JSON.stringify({ title: field(form, 'title'), description: field(form, 'description'), reward: num(form, 'reward') || 0, category: field(form, 'category'), deadline: field(form, 'deadline'), status: 'ACTIVE' }) }, token);
     form.reset();
     load();
   }
@@ -646,9 +652,9 @@ function ComplaintCard({ complaint, token, admin, onDone }: { complaint: Complai
       <p>{complaint.description}</p>
       <span className="badge">{complaint.status}</span>
       {admin && <select className="select" style={{ marginTop: 10 }} value={complaint.status} onChange={(e) => status(e.target.value)}>
-        <option>قيد المعالجة</option>
-        <option>تم الحل</option>
-        <option>مرفوضة</option>
+        <option value="PENDING">قيد المعالجة</option>
+        <option value="RESOLVED">تم الحل</option>
+        <option value="REJECTED">مرفوضة</option>
       </select>}
     </article>
   );
@@ -1017,7 +1023,7 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
 
       <form className="panel grid" onSubmit={upload} style={{ marginTop: 16 }}>
         {isManager && <CenterSelect centers={centers || []} required />}
-        <input className="input" name="file" type="file" accept=".xlsx,.xls" required />
+        <input className="input" name="file" type="file" accept=".xlsx" required />
         <button className="btn primary" disabled={loading}>{loading ? 'جاري الرفع...' : 'رفع ملف Excel'}</button>
         {message && <p className={message.includes('بنجاح') || message.includes('تم') ? 'muted' : 'error'}>{message}</p>}
       </form>

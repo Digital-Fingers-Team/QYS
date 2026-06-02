@@ -14,8 +14,12 @@ import type {
 } from "@qys/shared";
 import { normalizeRole } from "../auth/rbac";
 import { env } from "../config/env";
+import { ApiError } from "../errors/api-error";
 
 export type Role = "DIRECTORATE_MANAGER" | "CENTER_MANAGER" | "USER" | "ADMIN" | "CENTER";
+
+mongoose.set("sanitizeFilter", true);
+mongoose.set("strictQuery", true);
 
 export interface UserRecord {
   id: number;
@@ -385,7 +389,7 @@ async function ensureMongoConnected(): Promise<void> {
 
 async function nextId(key: string): Promise<number> {
   const counter = (await Counter.findOneAndUpdate({ key }, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true }).lean().exec()) as CounterRecord | null;
-  if (!counter) throw new Error(`Could not create counter for ${key}`);
+  if (!counter) throw new ApiError(500, "Could not create database counter", "DATABASE_COUNTER_ERROR");
   return counter.seq;
 }
 
@@ -399,12 +403,6 @@ function asRole(role?: string): Role {
 
 function parseDeadline(value: string | Date): Date {
   return value instanceof Date ? value : new Date(value);
-}
-
-async function userNameById(userId?: number | null) {
-  if (!userId) return undefined;
-  const user = await db.users.findById(userId);
-  return user?.name;
 }
 
 export async function initDatabase(): Promise<void> {
@@ -447,7 +445,7 @@ export const db = {
         const { passwordHash: _passwordHash, ...publicUser } = object;
         return publicUser;
       } catch (error: unknown) {
-        if (typeof error === "object" && error !== null && "code" in error && (error as { code?: number }).code === 11000) throw new Error("Email exists");
+        if (typeof error === "object" && error !== null && "code" in error && (error as { code?: number }).code === 11000) throw new ApiError(409, "Email exists", "EMAIL_EXISTS");
         throw error;
       }
     },
@@ -455,7 +453,7 @@ export const db = {
       await ensureMongoConnected();
       const data = clean({ ...input, role: "role" in input ? asRole(input.role) : undefined });
       const user = (await MongoUser.findOneAndUpdate({ id }, { $set: data }, { new: true, projection: { _id: 0, passwordHash: 0 } }).lean().exec()) as PublicUser | null;
-      if (!user) throw new Error("User not found");
+      if (!user) throw new ApiError(404, "User not found", "USER_NOT_FOUND");
       return user;
     },
     async delete(id: number): Promise<void> {
@@ -495,7 +493,7 @@ export const db = {
     async update(id: number, data: CenterUpdateInput): Promise<CenterRecord> {
       await ensureMongoConnected();
       const center = (await MongoCenter.findOneAndUpdate({ id }, { $set: clean(data) }, { new: true, projection: { _id: 0 } }).lean().exec()) as CenterRecord | null;
-      if (!center) throw new Error("Center not found");
+      if (!center) throw new ApiError(404, "Center not found", "CENTER_NOT_FOUND");
       return center;
     },
     async delete(id: number): Promise<void> {
@@ -533,7 +531,7 @@ export const db = {
       await ensureMongoConnected();
       const payload = clean({ ...data, deadline: data.deadline ? parseDeadline(data.deadline) : undefined });
       const challenge = (await MongoChallenge.findOneAndUpdate({ id }, { $set: payload }, { new: true, projection: { _id: 0 } }).lean().exec()) as ChallengeRecord | null;
-      if (!challenge) throw new Error("Challenge not found");
+      if (!challenge) throw new ApiError(404, "Challenge not found", "CHALLENGE_NOT_FOUND");
       return challenge;
     },
     async delete(id: number): Promise<void> {
@@ -543,14 +541,14 @@ export const db = {
     async join(challengeId: number, userId: number): Promise<ChallengeParticipationRecord> {
       await ensureMongoConnected();
       const challenge = await db.challenges.get(challengeId);
-      if (!challenge) throw new Error("Challenge not found");
-      if (challenge.maxParticipants && challenge._count.participations >= challenge.maxParticipants) throw new Error("Challenge is full");
+      if (!challenge) throw new ApiError(404, "Challenge not found", "CHALLENGE_NOT_FOUND");
+      if (challenge.maxParticipants && challenge._count.participations >= challenge.maxParticipants) throw new ApiError(409, "Challenge is full", "CHALLENGE_FULL");
       try {
         const participation = await MongoChallengeParticipation.create({ id: await nextId("challenge_participations"), challengeId, userId });
         await MongoChallenge.updateOne({ id: challengeId }, { $inc: { participants: 1 } }).exec();
         return participation.toObject() as unknown as ChallengeParticipationRecord;
       } catch (error: unknown) {
-        if (typeof error === "object" && error !== null && "code" in error && (error as { code?: number }).code === 11000) throw new Error("You already joined this challenge");
+        if (typeof error === "object" && error !== null && "code" in error && (error as { code?: number }).code === 11000) throw new ApiError(409, "You already joined this challenge", "CHALLENGE_ALREADY_JOINED");
         throw error;
       }
     }
@@ -572,13 +570,13 @@ export const db = {
     async vote(id: number): Promise<IdeaRecord> {
       await ensureMongoConnected();
       const idea = (await MongoIdea.findOneAndUpdate({ id }, { $inc: { votes: 1 } }, { new: true, projection: { _id: 0 } }).lean().exec()) as IdeaRecord | null;
-      if (!idea) throw new Error("Idea not found");
+      if (!idea) throw new ApiError(404, "Idea not found", "IDEA_NOT_FOUND");
       return idea;
     },
     async updateStatus(id: number, status: string): Promise<IdeaRecord> {
       await ensureMongoConnected();
       const idea = (await MongoIdea.findOneAndUpdate({ id }, { $set: { status } }, { new: true, projection: { _id: 0 } }).lean().exec()) as IdeaRecord | null;
-      if (!idea) throw new Error("Idea not found");
+      if (!idea) throw new ApiError(404, "Idea not found", "IDEA_NOT_FOUND");
       return idea;
     }
   },
@@ -599,7 +597,7 @@ export const db = {
     async updateStatus(id: number, status: string): Promise<ComplaintRecord> {
       await ensureMongoConnected();
       const complaint = (await MongoComplaint.findOneAndUpdate({ id }, { $set: { status } }, { new: true, projection: { _id: 0 } }).lean().exec()) as ComplaintRecord | null;
-      if (!complaint) throw new Error("Complaint not found");
+      if (!complaint) throw new ApiError(404, "Complaint not found", "COMPLAINT_NOT_FOUND");
       return complaint;
     }
   },
@@ -607,7 +605,8 @@ export const db = {
   activities: {
     async create(action: string, userId?: number | null): Promise<ActivityRecord> {
       await ensureMongoConnected();
-      const activity = await MongoActivity.create({ id: await nextId("activities"), action, userId, userName: await userNameById(userId) });
+      const safeAction = action.normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 240);
+      const activity = await MongoActivity.create({ id: await nextId("activities"), action: safeAction, userId });
       return activity.toObject() as unknown as ActivityRecord;
     },
     async list(limit = 50): Promise<ActivityRecord[]> {
@@ -642,7 +641,7 @@ export const db = {
     async replace(id: number, data: CreateMonthlyReportInput): Promise<MonthlyReportRecord> {
       await ensureMongoConnected();
       const report = (await MongoMonthlyReport.findOneAndUpdate({ id }, { $set: data }, { new: true, projection: { _id: 0 } }).lean().exec()) as MonthlyReportRecord | null;
-      if (!report) throw new Error("Monthly report not found");
+      if (!report) throw new ApiError(404, "Monthly report not found", "MONTHLY_REPORT_NOT_FOUND");
       return report;
     },
     async list(filter: { month: string; centerId?: number }): Promise<MonthlyReportRow[]> {
@@ -688,7 +687,7 @@ export const db = {
     async update(id: number, data: Partial<CreateUploadedFileInput>): Promise<UploadedFileRecord> {
       await ensureMongoConnected();
       const file = (await MongoUploadedFile.findOneAndUpdate({ id }, { $set: clean(data as Record<string, unknown>) }, { new: true, projection: { _id: 0 } }).lean().exec()) as UploadedFileRecord | null;
-      if (!file) throw new Error("Uploaded file not found");
+      if (!file) throw new ApiError(404, "Uploaded file not found", "UPLOADED_FILE_NOT_FOUND");
       return file;
     },
     async list(filter?: { month?: string; centerId?: number; limit?: number }): Promise<MonthlyUploadItem[]> {

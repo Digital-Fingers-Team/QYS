@@ -1,79 +1,98 @@
 import { z } from "zod";
 
 export const RoleSchema = z.enum(["DIRECTORATE_MANAGER", "CENTER_MANAGER", "USER"]);
-export const StatusSchema = z.enum(["ACTIVE", "PENDING", "RESOLVED", "REJECTED"]);
+export const AccountStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
+export const WorkflowStatusSchema = z.enum(["ACTIVE", "PENDING", "RESOLVED", "REJECTED"]);
+export const ReportStatusSchema = z.enum(["PENDING", "RESOLVED", "REJECTED"]);
+export const UploadStatusSchema = z.enum(["ACCEPTED", "REPLACED", "REJECTED", "DUPLICATE"]);
+export const MonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Use YYYY-MM format");
+
+const text = (min = 1, max = 500) =>
+  z
+    .string()
+    .transform((value) => value.normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, "").trim())
+    .pipe(z.string().min(min).max(max));
+
+const optionalUrl = z
+  .string()
+  .transform((value) => value.trim())
+  .pipe(z.string().url())
+  .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "Only http(s) URLs are allowed")
+  .optional();
+
+export const idParamSchema = z.object({ id: z.coerce.number().int().positive() }).strict();
 
 export const authRegisterSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
-  password: z.string().min(8),
+  name: text(2, 120),
+  email: z.string().trim().toLowerCase().email().max(254),
+  password: z.string().min(12).max(128),
   centerId: z.number().int().positive()
-});
+}).strict();
 export const authLoginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1)
-});
+  email: z.string().trim().toLowerCase().email().max(254),
+  password: z.string().min(1).max(128)
+}).strict();
 export const passwordChangeSchema = z.object({
-  currentPassword: z.string().min(1),
-  newPassword: z.string().min(8)
-});
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(12).max(128)
+}).strict();
 export const profileUpdateSchema = z.object({
-  name: z.string().min(2).optional(),
-  avatar: z.string().url().or(z.literal("")).optional(),
+  name: text(2, 120).optional(),
+  avatar: optionalUrl.or(z.literal("")).optional(),
   language: z.enum(["ar", "en"]).optional(),
   theme: z.enum(["light", "dark"]).optional()
-});
+}).strict();
 export const userAdminSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
-  password: z.string().min(6).optional(),
+  name: text(2, 120),
+  email: z.string().trim().toLowerCase().email().max(254),
+  password: z.string().min(12).max(128),
   role: RoleSchema.default("USER"),
   centerId: z.number().int().positive().nullable().optional(),
   points: z.number().int().nonnegative().default(0),
-  status: z.string().min(2).default("ACTIVE"),
+  status: AccountStatusSchema.default("ACTIVE"),
   isActive: z.boolean().default(true)
-});
+}).strict();
 export const userAdminUpdateSchema = userAdminSchema.partial();
-export const passwordResetSchema = z.object({ password: z.string().min(8) });
+export const passwordResetSchema = z.object({ password: z.string().min(12).max(128) }).strict();
 
 export const centerSchema = z.object({
-  name: z.string().min(2),
-  location: z.string().min(2),
+  name: text(2, 160),
+  location: text(2, 160),
   capacity: z.number().int().nonnegative().optional(),
   rating: z.number().min(0).max(5).optional(),
-  type: z.string().min(2),
-  image: z.string().url().optional(),
-  description: z.string().min(2)
-});
+  type: text(2, 80),
+  image: optionalUrl,
+  description: text(2, 1000)
+}).strict();
 export const centerUpdateSchema = centerSchema.partial();
 
 export const challengeSchema = z.object({
-  title: z.string().min(2),
-  description: z.string().min(2),
+  title: text(2, 160),
+  description: text(2, 2000),
   reward: z.number().int().nonnegative(),
-  status: z.string().min(2).default("ACTIVE"),
-  category: z.string().min(2),
+  status: WorkflowStatusSchema.default("ACTIVE"),
+  category: text(2, 80),
   participants: z.number().int().nonnegative().optional(),
   maxParticipants: z.number().int().positive().optional(),
   deadline: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
-});
+}).strict();
 export const challengeUpdateSchema = challengeSchema.partial();
 
-export const ideaSchema = z.object({ title: z.string().min(2), description: z.string().min(2) });
-export const complaintSchema = z.object({ title: z.string().min(2), description: z.string().min(2), type: z.string().min(2) });
-export const statusUpdateSchema = z.object({ status: z.string().min(2) });
+export const ideaSchema = z.object({ title: text(2, 160), description: text(2, 2000) }).strict();
+export const complaintSchema = z.object({ title: text(2, 160), description: text(2, 2000), type: text(2, 80) }).strict();
+export const statusUpdateSchema = z.object({ status: WorkflowStatusSchema }).strict();
 export const reportSchema = z.object({
-  type: z.string().min(2),
-  title: z.string().min(2),
-  content: z.string().min(2),
-  status: z.string().min(2).default("PENDING")
-});
-export const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Use YYYY-MM format");
-export const monthlyReportQuerySchema = z.object({ month: monthSchema });
+  type: text(2, 80),
+  title: text(2, 160),
+  content: text(2, 4000),
+  status: ReportStatusSchema.default("PENDING")
+}).strict();
+export const monthSchema = MonthSchema;
+export const monthlyReportQuerySchema = z.object({ month: monthSchema }).strict();
 export const monthlyReportUploadBodySchema = z.object({
   centerId: z.coerce.number().int().positive().optional(),
   replace: z.coerce.boolean().default(false)
-});
+}).strict();
 
 export type MonthlyReportRow = {
   id: number;

@@ -14,12 +14,13 @@ import { monthlyReportsController } from "../controllers/monthly-reports.control
 import { managementRoles, reportRoles } from "../auth/rbac";
 import { auth, optionalAuth, requireAdmin, requireRole } from "../middleware/auth";
 import { asyncHandler } from "../middleware/async-handler";
+import { authRateLimit, uploadRateLimit } from "../middleware/security";
 import { excelUpload } from "../services/excel-upload.service";
 
 const router = Router();
 
-router.post("/auth/register", asyncHandler(authController.register));
-router.post("/auth/login", asyncHandler(authController.login));
+router.post("/auth/register", authRateLimit, asyncHandler(authController.register));
+router.post("/auth/login", authRateLimit, asyncHandler(authController.login));
 router.get("/auth/me", auth, asyncHandler(authController.me));
 router.patch("/auth/me", auth, asyncHandler(authController.updateMe));
 router.patch("/auth/password", auth, asyncHandler(authController.changePassword));
@@ -54,7 +55,7 @@ router.patch("/complaints/:id/status", auth, requireAdmin, asyncHandler(complain
 
 router.get("/reports", auth, requireRole(...reportRoles), asyncHandler(reportsController.list));
 router.post("/reports", auth, requireRole(...reportRoles), asyncHandler(reportsController.create));
-router.post("/monthly-reports/upload", auth, requireRole(...reportRoles), excelUpload.single("file"), asyncHandler(monthlyReportsController.upload));
+router.post("/monthly-reports/upload", auth, requireRole(...reportRoles), uploadRateLimit, excelUpload.single("file"), asyncHandler(monthlyReportsController.upload));
 router.get("/monthly-reports", auth, requireRole(...reportRoles), asyncHandler(monthlyReportsController.list));
 router.get("/monthly-reports/summary", auth, requireRole(...reportRoles), asyncHandler(monthlyReportsController.summary));
 router.get("/monthly-reports/uploads", auth, requireRole(...reportRoles), asyncHandler(monthlyReportsController.uploads));

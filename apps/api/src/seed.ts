@@ -8,9 +8,9 @@ const imagePool = [
 ];
 
 const users = [
-  { email: "user@example.com", password: "user123", role: "USER" as const, name: "مستخدم تجريبي", points: 150 },
-  { email: "admin@example.com", password: "admin123", role: "DIRECTORATE_MANAGER" as const, name: "مدير المديرية", points: 0 },
-  { email: "center@example.com", password: "center123", role: "CENTER_MANAGER" as const, name: "حساب مركز", points: 0 }
+  { email: "user@example.com", password: process.env.SEED_USER_PASSWORD || "UserDevPass!2026", role: "USER" as const, name: "مستخدم تجريبي", points: 150 },
+  { email: "admin@example.com", password: process.env.SEED_ADMIN_PASSWORD || "AdminDevPass!2026", role: "DIRECTORATE_MANAGER" as const, name: "مدير المديرية", points: 0 },
+  { email: "center@example.com", password: process.env.SEED_CENTER_PASSWORD || "CenterDevPass!2026", role: "CENTER_MANAGER" as const, name: "حساب مركز", points: 0 }
 ];
 
 const centerRows = `
@@ -103,7 +103,7 @@ const challenges = [
     title: "تحدي اللياقة البدنية",
     description: "مارس الرياضة لمدة 30 دقيقة يومياً لمدة أسبوع",
     reward: 100,
-    status: "نشط",
+    status: "ACTIVE" as const,
     category: "fitness",
     participants: 15,
     deadline: "2026-06-01"
@@ -112,7 +112,7 @@ const challenges = [
     title: "بطولة الشطرنج الرمضانية",
     description: "شارك في بطولة الشطرنج السنوية بمركز شباب بنها",
     reward: 500,
-    status: "نشط",
+    status: "ACTIVE" as const,
     category: "mental",
     participants: 40,
     deadline: "2026-05-15"
@@ -121,7 +121,7 @@ const challenges = [
     title: "ماراثون القليوبية للجري",
     description: "ماراثون 5 كم في شوارع مدينة بنها",
     reward: 300,
-    status: "قريباً",
+    status: "PENDING" as const,
     category: "running",
     participants: 0,
     deadline: "2026-07-10"
@@ -132,7 +132,7 @@ async function main() {
   await initDatabase();
 
   for (const user of users) {
-    const passwordHash = await bcrypt.hash(user.password, 10);
+    const passwordHash = await bcrypt.hash(user.password, 12);
     const exists = await db.users.findByEmail(user.email);
     if (!exists) {
       await db.users.create({
@@ -193,7 +193,7 @@ async function main() {
       },
       seededUser.id
     );
-    await db.ideas.updateStatus(idea.id, "تحت الدراسة");
+    await db.ideas.updateStatus(idea.id, "PENDING");
     for (let i = 0; i < 25; i += 1) await db.ideas.vote(idea.id);
   }
   if (!existingIdeas.some((idea) => idea.title === "تطبيق للمسابقات")) {
@@ -204,7 +204,7 @@ async function main() {
       },
       seededUser.id
     );
-    await db.ideas.updateStatus(idea.id, "مقبولة");
+    await db.ideas.updateStatus(idea.id, "RESOLVED");
     for (let i = 0; i < 42; i += 1) await db.ideas.vote(idea.id);
   }
 
@@ -218,7 +218,7 @@ async function main() {
       },
       seededUser.id
     );
-    await db.complaints.updateStatus(complaint.id, "قيد المعالجة");
+    await db.complaints.updateStatus(complaint.id, "PENDING");
   }
 
   const reports = await db.reports.list();
@@ -227,7 +227,7 @@ async function main() {
       type: "summary",
       title: "تقرير المنصة الأولي",
       content: "بيانات أولية مستخرجة من نسخة IndexedDB التجريبية.",
-      status: "ACTIVE"
+      status: "PENDING"
     });
   }
 

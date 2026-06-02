@@ -5,7 +5,7 @@ import { db, CenterRecord } from "../db";
 import { ApiError } from "../errors/api-error";
 import { AuthedRequest } from "../middleware/auth";
 import { parseMonthlyReportExcel } from "./excel-parser.service";
-import { sanitizeFilename, fileHash, validateExcelFile } from "./excel-upload.service";
+import { sanitizeOriginalFilename, safeStoredFilename, fileHash, validateExcelFile } from "./excel-upload.service";
 
 function normalizeText(value: string) {
   return value.replace(/\s+/g, " ").trim().toLocaleLowerCase("ar-EG");
@@ -28,8 +28,8 @@ async function resolveTargetCenter(req: AuthedRequest, centerIdFromBody?: number
 
 function baseFileMetadata(file: Express.Multer.File, status: string, userId?: number, error?: string) {
   return {
-    originalName: file.originalname,
-    storedName: sanitizeFilename(file.originalname),
+    originalName: sanitizeOriginalFilename(file.originalname),
+    storedName: safeStoredFilename(),
     size: file.size,
     mimeType: file.mimetype,
     extension: path.extname(file.originalname).toLowerCase(),
@@ -63,7 +63,7 @@ export async function uploadMonthlyReport(req: AuthedRequest) {
 
   let parsed;
   try {
-    parsed = parseMonthlyReportExcel(file.buffer);
+    parsed = await parseMonthlyReportExcel(file.buffer);
   } catch (error) {
     const message = error instanceof Error ? error.message : "تعذر قراءة الملف.";
     await markRejected(file, userId, message, targetCenter.id);

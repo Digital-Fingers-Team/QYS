@@ -5,16 +5,28 @@ config();
 const envSchema = z
   .object({
     PORT: z.string().default("4000"),
-    NODE_ENV: z.string().default("development"),
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     MONGODB_URL: z.string().url(),
-    JWT_SECRET: z.string().min(8),
+    JWT_SECRET: z
+      .string()
+      .min(32)
+      .refine((value) => !["change_me", "changeme", "secret", "password"].includes(value.toLowerCase()), "JWT_SECRET must not be a placeholder"),
+    JWT_EXPIRES_IN: z.string().regex(/^\d+[smhd]$/).default("8h"),
+    JWT_ISSUER: z.string().min(2).default("qys-api"),
+    JWT_AUDIENCE: z.string().min(2).default("qys-web"),
     CORS_ORIGIN: z.string().optional(),
     FRONTEND_URL: z.string().url().optional(),
     RAILWAY_PUBLIC_DOMAIN: z.string().optional(),
-    EXCEL_MAX_UPLOAD_MB: z.coerce.number().int().positive().default(10)
+    EXCEL_MAX_UPLOAD_MB: z.coerce.number().int().positive().max(10).default(5),
+    JSON_BODY_LIMIT: z.string().default("100kb"),
+    TRUST_PROXY: z.coerce.boolean().default(false)
   })
   .transform((value) => {
     const isDeployed = value.NODE_ENV === "production" || Boolean(value.RAILWAY_PUBLIC_DOMAIN);
+    const configuredCors = value.FRONTEND_URL || value.CORS_ORIGIN;
+    if (isDeployed && (!configuredCors || configuredCors.includes("*") || configuredCors.includes("localhost"))) {
+      throw new Error("Production deployments must set FRONTEND_URL or CORS_ORIGIN to explicit HTTPS origin(s).");
+    }
     const corsOrigin = isDeployed && value.CORS_ORIGIN?.includes("localhost") ? undefined : value.CORS_ORIGIN;
 
     return {
@@ -22,7 +34,7 @@ const envSchema = z
       CORS_ORIGIN:
         value.FRONTEND_URL ||
         corsOrigin ||
-        (isDeployed ? "*" : "http://localhost:3000")
+        "http://localhost:3000"
     };
   });
 export const env = envSchema.parse(process.env);
