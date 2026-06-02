@@ -17,7 +17,18 @@ const optionalUrl = z
   .string()
   .transform((value) => value.trim())
   .pipe(z.string().url())
-  .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "Only http(s) URLs are allowed")
+  .refine((value) => {
+    try {
+      return ["http:", "https:"].includes(new URL(value).protocol);
+    } catch {
+      return false;
+    }
+  }, "Only http(s) URLs are allowed")
+  .optional();
+
+const avatarImage = optionalUrl
+  .or(z.string().max(1_100_000).regex(/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/, "Use a PNG, JPEG, WebP, or GIF image."))
+  .or(z.literal(""))
   .optional();
 
 export const idParamSchema = z.object({ id: z.coerce.number().int().positive() }).strict();
@@ -38,7 +49,8 @@ export const passwordChangeSchema = z.object({
 }).strict();
 export const profileUpdateSchema = z.object({
   name: text(2, 120).optional(),
-  avatar: optionalUrl.or(z.literal("")).optional(),
+  email: z.string().trim().toLowerCase().email().max(254).optional(),
+  avatar: avatarImage,
   language: z.enum(["ar", "en"]).optional(),
   theme: z.enum(["light", "dark"]).optional()
 }).strict();

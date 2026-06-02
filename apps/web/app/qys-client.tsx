@@ -61,6 +61,29 @@ const labels = {
   }
 };
 
+function requiredText(form: HTMLFormElement, name: string, min = 2) {
+  const value = field(form, name);
+  if (value.length < min) throw new Error(`${name} must contain at least ${min} characters.`);
+  return value;
+}
+
+const avatarUploadLimitBytes = 750 * 1024;
+
+function readAvatarFile(file: File) {
+  if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
+    throw new Error('Profile photo must be PNG, JPEG, WebP, or GIF.');
+  }
+  if (file.size > avatarUploadLimitBytes) {
+    throw new Error('Profile photo must be 750 KB or smaller.');
+  }
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Could not read profile photo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 function CenterSelect({ centers, defaultValue = '', required = false }: { centers: Center[]; defaultValue?: number | string | null; required?: boolean }) {
   const [query, setQuery] = useState('');
   const normalizedQuery = query.trim().toLowerCase();
@@ -135,15 +158,37 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   );
 }
 
+function NavSvg({ children }: { children: React.ReactNode }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+      {children}
+    </svg>
+  );
+}
+
 function navIconFor(href: string) {
-  if (href.includes('users')) return 'U';
-  if (href.includes('centers')) return 'C';
-  if (href.includes('ideas')) return 'I';
-  if (href.includes('challenges')) return 'T';
-  if (href.includes('complaints')) return '!';
-  if (href.includes('reports')) return 'R';
-  if (href.includes('settings')) return 'S';
-  return 'D';
+  if (href.includes('users')) {
+    return <NavSvg><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></NavSvg>;
+  }
+  if (href.includes('centers')) {
+    return <NavSvg><path d="M3 21h18" /><path d="M5 21V7l7-4 7 4v14" /><path d="M9 21v-6h6v6" /><path d="M9 9h.01" /><path d="M12 9h.01" /><path d="M15 9h.01" /><path d="M9 12h.01" /><path d="M12 12h.01" /><path d="M15 12h.01" /></NavSvg>;
+  }
+  if (href.includes('ideas')) {
+    return <NavSvg><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12.74V17h8v-2.26A7 7 0 0 0 12 2Z" /></NavSvg>;
+  }
+  if (href.includes('challenges')) {
+    return <NavSvg><path d="M8 21h8" /><path d="M12 17v4" /><path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" /><path d="M5 6H3a4 4 0 0 0 4 4" /><path d="M19 6h2a4 4 0 0 1-4 4" /></NavSvg>;
+  }
+  if (href.includes('complaints')) {
+    return <NavSvg><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" /><path d="M12 7v5" /><path d="M12 15h.01" /></NavSvg>;
+  }
+  if (href.includes('reports')) {
+    return <NavSvg><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /><path d="M8 17v-3" /><path d="M12 17v-6" /><path d="M16 17v-4" /></NavSvg>;
+  }
+  if (href.includes('settings')) {
+    return <NavSvg><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z" /></NavSvg>;
+  }
+  return <NavSvg><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></NavSvg>;
 }
 
 function statIconFor(title: string) {
@@ -172,7 +217,7 @@ function roleDescription(role: Role) {
 function Shell({ children, admin = false }: { children: React.ReactNode; admin?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, ready, logout } = useSession(true);
+  const { user, ready } = useSession(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const t = labels[user?.language || 'ar'];
   const nav = admin
@@ -183,7 +228,8 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
         ['/admin/ideas', t.ideas],
         ['/admin/challenges', t.challenges],
         ['/admin/complaints', t.complaints],
-        ['/admin/reports', t.reports]
+        ['/admin/reports', t.reports],
+        ['/admin/settings', t.settings]
       ]
     : user?.role === 'CENTER_MANAGER'
       ? [
@@ -191,7 +237,8 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
         ['/center/ideas', t.ideas],
         ['/center/users', t.users],
         ['/center/challenges', t.challenges],
-        ['/center/complaints', t.complaints]
+        ['/center/complaints', t.complaints],
+        ['/center/settings', t.settings]
       ]
       : [
         ['/dashboard', t.dashboard],
@@ -210,6 +257,8 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  const settingsHref = admin ? '/admin/settings' : user?.role === 'CENTER_MANAGER' ? '/center/settings' : '/settings';
 
   if (!ready || !user) return <main className="auth-page">جاري التحميل...</main>;
 
@@ -240,20 +289,16 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
             <button className="btn btn-outline menu-toggle" type="button" onClick={() => setMobileOpen((open) => !open)} aria-label="فتح القائمة">
               <span aria-hidden>☰</span>
             </button>
-            <div className="search-wrapper header-search">
-              <span className="search-icon" aria-hidden>⌕</span>
-              <input type="search" placeholder="بحث سريع..." />
-            </div>
           </div>
           <div className="header-right">
-            {!admin && <div className="points-badge"><span>{user.points || 0}</span><span>نقطة</span></div>}
-            <button className="user-profile-header" type="button" onClick={logout} title={t.logout}>
-              <span className="user-avatar">{userInitial(user)}</span>
+            {!canManageAccounts(user.role) && <div className="points-badge"><span>{user.points || 0}</span><span>نقطة</span></div>}
+            <Link className="user-profile-header" href={settingsHref} title={t.settings}>
+              <span className="user-avatar">{user.avatar ? <img src={user.avatar} alt="" /> : userInitial(user)}</span>
               <span className="user-info-text">
                 <strong>{user.name}</strong>
-                <span>{roleDescription(user.role)} | {t.logout}</span>
+                <span>{roleDescription(user.role)} | {t.settings}</span>
               </span>
-            </button>
+            </Link>
           </div>
         </header>
         <div className="content-wrapper">{children}</div>
@@ -263,7 +308,7 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
 }
 
 export function UserPage({ section }: { section: 'dashboard' | 'centers' | 'ideas' | 'challenges' | 'complaints' | 'reports' | 'settings' }) {
-  const { token, user, setUser } = useSession(true);
+  const { token, user, setUser, logout } = useSession(true);
   return (
     <Shell>
       {section === 'dashboard' && <UserDashboard token={token} />}
@@ -273,14 +318,14 @@ export function UserPage({ section }: { section: 'dashboard' | 'centers' | 'idea
       {section === 'complaints' && <ComplaintsPage token={token} admin={false} />}
       {section === 'reports' && user && canAccessReports(user.role) && <ReportsAdmin token={token} currentUser={user} />}
       {section === 'reports' && user && !canAccessReports(user.role) && <Header title="غير مصرح" subtitle="لا تملك صلاحية فتح هذه الصفحة." />}
-      {section === 'settings' && user && <SettingsPage token={token} user={user} setUser={setUser} />}
+      {section === 'settings' && user && <SettingsPage token={token} user={user} setUser={setUser} logout={logout} />}
     </Shell>
   );
 }
 
-export function CenterPage({ section }: { section: 'reports' | 'ideas' | 'users' | 'challenges' | 'complaints' }) {
+export function CenterPage({ section }: { section: 'reports' | 'ideas' | 'users' | 'challenges' | 'complaints' | 'settings' }) {
   const router = useRouter();
-  const { token, user, ready } = useSession(true);
+  const { token, user, setUser, ready, logout } = useSession(true);
 
   useEffect(() => {
     if (ready && user?.role !== 'CENTER_MANAGER') router.replace('/dashboard');
@@ -296,6 +341,7 @@ export function CenterPage({ section }: { section: 'reports' | 'ideas' | 'users'
       {user.role === 'CENTER_MANAGER' && section === 'users' && <CenterUsersPage token={token} />}
       {user.role === 'CENTER_MANAGER' && section === 'challenges' && <ChallengesPage token={token} admin={false} />}
       {user.role === 'CENTER_MANAGER' && section === 'complaints' && <ComplaintsPage token={token} admin={false} />}
+      {user.role === 'CENTER_MANAGER' && section === 'settings' && <SettingsPage token={token} user={user} setUser={setUser} logout={logout} />}
     </Shell>
   );
 }
@@ -333,14 +379,20 @@ function Stat({ title, value }: { title: string; value: number | string }) {
 
 function CentersPage({ token, admin }: { token: string; admin: boolean }) {
   const [q, setQ] = useState('');
+  const [message, setMessage] = useState('');
   const { items: centers, load, page, totalPages, setPage } = usePaginatedData<Center>('/centers', token, 24, q);
 
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    await api('/centers', { method: 'POST', body: JSON.stringify({ name: field(form, 'name'), location: field(form, 'location'), type: field(form, 'type'), description: field(form, 'description'), rating: num(form, 'rating') }) }, token);
-    form.reset();
-    load();
+    setMessage('');
+    try {
+      await api('/centers', { method: 'POST', body: JSON.stringify({ name: requiredText(form, 'name'), location: requiredText(form, 'location'), type: requiredText(form, 'type'), description: requiredText(form, 'description'), rating: num(form, 'rating') }) }, token);
+      form.reset();
+      load();
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
   }
 
   return (
@@ -355,6 +407,7 @@ function CentersPage({ token, admin }: { token: string; admin: boolean }) {
         <input className="input" name="description" placeholder="الوصف" required />
         <button className="btn primary">إضافة</button>
       </form>}
+      {message && <p className="error">{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
         {centers.map((center) => <CenterCard key={center.id} center={center} admin={admin} token={token} onDone={load} />)}
       </div>
@@ -382,12 +435,18 @@ function CenterCard({ center, admin, token, onDone }: { center: Center; admin: b
 
 function IdeasPage({ token, admin }: { token: string; admin: boolean }) {
   const { items: ideas, load, page, totalPages, setPage } = usePaginatedData<Idea>('/ideas', token, 20);
+  const [message, setMessage] = useState('');
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    await api('/ideas', { method: 'POST', body: JSON.stringify({ title: field(form, 'title'), description: field(form, 'description') }) }, token);
-    form.reset();
-    load();
+    setMessage('');
+    try {
+      await api('/ideas', { method: 'POST', body: JSON.stringify({ title: requiredText(form, 'title'), description: requiredText(form, 'description') }) }, token);
+      form.reset();
+      load();
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
   }
   return (
     <>
@@ -397,6 +456,7 @@ function IdeasPage({ token, admin }: { token: string; admin: boolean }) {
         <textarea className="textarea" name="description" placeholder="وصف الفكرة" required />
         <button className="btn primary">نشر الفكرة</button>
       </form>}
+      {message && <p className="error">{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
         {ideas.map((idea) => <IdeaCard key={idea.id} idea={idea} token={token} admin={admin} onDone={load} />)}
       </div>
@@ -410,33 +470,30 @@ function IdeaCard({ idea, token, admin, onDone }: { idea: Idea; token: string; a
     await api(`/ideas/${idea.id}/vote`, { method: 'POST' }, token);
     onDone?.();
   }
-  async function status(value: string) {
-    await api(`/ideas/${idea.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: value }) }, token);
-    onDone?.();
-  }
   return (
     <article className="item-card">
       <h3>{idea.title}</h3>
       <p className="muted">{idea.user?.name || 'مستخدم'} | {idea.status}</p>
       <p>{idea.description}</p>
-      <button className="btn" onClick={vote}>تصويت ({idea.votes})</button>
-      {admin && <select className="select" style={{ marginTop: 10 }} value={idea.status} onChange={(e) => status(e.target.value)}>
-        <option value="PENDING">تحت الدراسة</option>
-        <option value="RESOLVED">مقبولة</option>
-        <option value="REJECTED">مرفوضة</option>
-      </select>}
+      {!admin && <button className="btn" onClick={vote}>تصويت ({idea.votes})</button>}
     </article>
   );
 }
 
 function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
   const { items: challenges, load, page, totalPages, setPage } = usePaginatedData<Challenge>('/challenges', token, 20);
+  const [message, setMessage] = useState('');
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    await api('/challenges', { method: 'POST', body: JSON.stringify({ title: field(form, 'title'), description: field(form, 'description'), reward: num(form, 'reward') || 0, category: field(form, 'category'), deadline: field(form, 'deadline'), status: 'ACTIVE' }) }, token);
-    form.reset();
-    load();
+    setMessage('');
+    try {
+      await api('/challenges', { method: 'POST', body: JSON.stringify({ title: requiredText(form, 'title'), description: requiredText(form, 'description'), reward: num(form, 'reward') || 0, category: requiredText(form, 'category'), deadline: field(form, 'deadline'), status: 'ACTIVE' }) }, token);
+      form.reset();
+      load();
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
   }
   return (
     <>
@@ -449,6 +506,7 @@ function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
         <input className="input" name="deadline" type="date" required />
         <button className="btn primary">إضافة</button>
       </form>}
+      {message && <p className="error">{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
         {challenges.map((challenge) => <ChallengeCard key={challenge.id} challenge={challenge} token={token} admin={admin} onDone={load} />)}
       </div>
@@ -480,12 +538,18 @@ function ChallengeCard({ challenge, token, admin, onDone }: { challenge: Challen
 
 function ComplaintsPage({ token, admin }: { token: string; admin: boolean }) {
   const { items: complaints, load, page, totalPages, setPage } = usePaginatedData<Complaint>('/complaints', token, 20);
+  const [message, setMessage] = useState('');
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    await api('/complaints', { method: 'POST', body: JSON.stringify({ title: field(form, 'title'), description: field(form, 'description'), type: field(form, 'type') }) }, token);
-    form.reset();
-    load();
+    setMessage('');
+    try {
+      await api('/complaints', { method: 'POST', body: JSON.stringify({ title: requiredText(form, 'title'), description: requiredText(form, 'description'), type: requiredText(form, 'type') }) }, token);
+      form.reset();
+      load();
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
   }
   return (
     <>
@@ -496,6 +560,7 @@ function ComplaintsPage({ token, admin }: { token: string; admin: boolean }) {
         <textarea className="textarea" name="description" placeholder="التفاصيل" required />
         <button className="btn primary">إرسال</button>
       </form>}
+      {message && <p className="error">{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
         {complaints.map((complaint) => <ComplaintCard key={complaint.id} complaint={complaint} token={token} admin={admin} onDone={load} />)}
       </div>
@@ -524,15 +589,40 @@ function ComplaintCard({ complaint, token, admin, onDone }: { complaint: Complai
   );
 }
 
-function SettingsPage({ token, user, setUser }: { token: string; user: User; setUser: (user: User) => void }) {
+function SettingsPage({ token, user, setUser, logout }: { token: string; user: User; setUser: (user: User) => void; logout: () => void }) {
+  const [profileMessage, setProfileMessage] = useState('');
   const [passwordMessage, setPasswordMessage] = useState('');
+  const [avatarValue, setAvatarValue] = useState(user.avatar || '');
+  const [avatarRemoved, setAvatarRemoved] = useState(false);
+
+  async function uploadAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.currentTarget.files?.[0];
+    if (!file) return;
+    setProfileMessage('');
+    try {
+      setAvatarValue(await readAvatarFile(file));
+      setAvatarRemoved(false);
+    } catch (err) {
+      setProfileMessage((err as Error).message);
+      e.currentTarget.value = '';
+    }
+  }
 
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    const updated = await api<User>('/auth/me', { method: 'PATCH', body: JSON.stringify({ name: field(form, 'name'), avatar: field(form, 'avatar'), language: field(form, 'language'), theme: field(form, 'theme') }) }, token);
-    setUser(updated);
-    writeSession(token, updated);
+    setProfileMessage('');
+    try {
+      const avatarUrl = field(form, 'avatar');
+      const avatar = avatarRemoved ? '' : avatarValue || avatarUrl;
+      const updated = await api<User>('/auth/me', { method: 'PATCH', body: JSON.stringify({ name: requiredText(form, 'name'), email: field(form, 'email'), avatar, language: field(form, 'language'), theme: field(form, 'theme') }) }, token);
+      setUser(updated);
+      setAvatarValue(updated.avatar || '');
+      setAvatarRemoved(false);
+      writeSession(token, updated);
+    } catch (err) {
+      setProfileMessage((err as Error).message);
+    }
   }
   async function changePassword(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -550,25 +640,37 @@ function SettingsPage({ token, user, setUser }: { token: string; user: User; set
     <>
       <Header title="الإعدادات" subtitle="تخصيص الملف الشخصي والمظهر." />
       <form className="panel grid" onSubmit={save}>
-        <input className="input" name="name" defaultValue={user.name} />
+        <input className="input" name="name" defaultValue={user.name} minLength={2} required />
+        <input className="input" name="email" type="email" defaultValue={user.email} required />
+        <div className="settings-avatar-row">
+          <span className="settings-avatar-preview">{avatarValue ? <img src={avatarValue} alt="" /> : userInitial(user)}</span>
+          <div className="grid">
+            <input className="input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={uploadAvatar} />
+            {avatarValue && <button className="btn" type="button" onClick={() => { setAvatarValue(''); setAvatarRemoved(true); }}>Remove photo</button>}
+          </div>
+        </div>
         <input className="input" name="avatar" defaultValue={user.avatar || ''} placeholder="رابط الصورة" />
         <select className="select" name="language" defaultValue={user.language}><option value="ar">العربية</option><option value="en">English</option></select>
         <select className="select" name="theme" defaultValue={user.theme}><option value="light">Light</option><option value="dark">Dark</option></select>
         <button className="btn primary">حفظ</button>
       </form>
+      {profileMessage && <p className="error">{profileMessage}</p>}
       <form className="panel grid" onSubmit={changePassword} style={{ marginTop: 16 }}>
         <input className="input" name="currentPassword" type="password" maxLength={128} placeholder="كلمة المرور الحالية" required />
         <input className="input" name="newPassword" type="password" minLength={6} maxLength={128} placeholder="كلمة مرور جديدة (6 أحرف على الأقل)" required />
         <button className="btn primary">تغيير كلمة المرور</button>
         {passwordMessage && <p className={passwordMessage.includes('نجاح') ? 'muted' : 'error'}>{passwordMessage}</p>}
       </form>
+      <div className="panel" style={{ marginTop: 16 }}>
+        <button className="btn danger" type="button" onClick={logout}>تسجيل الخروج</button>
+      </div>
     </>
   );
 }
 
-export function AdminPage({ section }: { section: 'dashboard' | 'users' | 'centers' | 'ideas' | 'challenges' | 'complaints' | 'reports' }) {
+export function AdminPage({ section }: { section: 'dashboard' | 'users' | 'centers' | 'ideas' | 'challenges' | 'complaints' | 'reports' | 'settings' }) {
   const router = useRouter();
-  const { token, user, ready } = useSession(true);
+  const { token, user, setUser, ready, logout } = useSession(true);
   const allowed = user && canManageAccounts(user.role);
 
   useEffect(() => {
@@ -587,6 +689,7 @@ export function AdminPage({ section }: { section: 'dashboard' | 'users' | 'cente
       {allowed && section === 'challenges' && <ChallengesPage token={token} admin />}
       {allowed && section === 'complaints' && <ComplaintsPage token={token} admin />}
       {allowed && section === 'reports' && <ReportsAdmin token={token} currentUser={user} />}
+      {allowed && section === 'settings' && <SettingsPage token={token} user={user} setUser={setUser} logout={logout} />}
     </Shell>
   );
 }
@@ -951,8 +1054,8 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
 
       <div className="grid cards" style={{ marginTop: 16 }}>
         <div className="panel">
-          <h3>المراكز التي لم ترفع</h3>
-          {(summary?.missingCenters || []).length === 0 && <p className="muted">كل المراكز المطلوبة رفعت تقرير هذا الشهر.</p>}
+          <h3>{(summary?.missingCenters || []).length === 0 ? 'اكتمل رفع التقارير' : 'المراكز التي لم ترفع التقرير'}</h3>
+          {(summary?.missingCenters || []).length === 0 && <p className="muted">لا توجد مراكز متأخرة عن رفع تقرير هذا الشهر.</p>}
           {(summary?.missingCenters || []).map((center) => <p key={center.id} className="muted">{center.name} - {center.location}</p>)}
         </div>
         <div className="panel">

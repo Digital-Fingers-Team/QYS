@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import ExcelJS from "exceljs";
-import { authLoginSchema, centerSchema, paginationQuerySchema } from "@qys/shared";
+import { authLoginSchema, centerSchema, paginationQuerySchema, profileUpdateSchema } from "@qys/shared";
 
 function configureEnv() {
   process.env.NODE_ENV = "test";
@@ -56,6 +56,10 @@ test("shared text schemas normalize control characters", () => {
 test("shared pagination schema coerces bounded page parameters", () => {
   assert.deepEqual(paginationQuerySchema.parse({ page: "2", pageSize: "25" }), { page: 2, pageSize: 25 });
   assert.throws(() => paginationQuerySchema.parse({ page: "1", pageSize: "101" }));
+});
+
+test("shared profile schema accepts empty avatar removal marker", () => {
+  assert.deepEqual(profileUpdateSchema.parse({ avatar: "" }), { avatar: "" });
 });
 
 test("Excel upload validation accepts valid xlsx and assigns safe names", async () => {

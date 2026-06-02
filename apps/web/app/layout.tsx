@@ -1,8 +1,14 @@
 import './globals.css';
+import type { Metadata } from 'next';
 
-export const metadata = {
+export const metadata: Metadata = {
   title: 'QYS Platform',
-  description: 'Youth and sports platform'
+  description: 'Youth and sports platform',
+  icons: {
+    icon: '/logo.png',
+    shortcut: '/logo.png',
+    apple: '/logo.png'
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

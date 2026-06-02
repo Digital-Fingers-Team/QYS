@@ -3,6 +3,7 @@ import { profileUpdateSchema } from "@qys/shared";
 import { db } from "../db";
 import { changePassword, login, register } from "../services/auth.service";
 import { AuthedRequest } from "../middleware/auth";
+import { ApiError } from "../errors/api-error";
 import { publicUser } from "./user-presenter";
 
 export const authController = {
@@ -14,7 +15,12 @@ export const authController = {
     res.json(publicUser(user));
   },
   updateMe: async (req: AuthedRequest, res: Response) => {
-    const user = await db.users.update(req.user!.userId, profileUpdateSchema.parse(req.body));
+    const data = profileUpdateSchema.parse(req.body);
+    if (data.email) {
+      const existing = await db.users.findByEmail(data.email);
+      if (existing && existing.id !== req.user!.userId) throw new ApiError(409, "Email exists", "EMAIL_EXISTS");
+    }
+    const user = await db.users.update(req.user!.userId, data);
     await db.activities.create("Updated profile settings", req.user!.userId);
     res.json(publicUser(user));
   },

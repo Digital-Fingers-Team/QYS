@@ -506,12 +506,22 @@ export const db = {
     async update(id: number, input: UserAdminUpdateInput | ProfileUpdateInput & { passwordHash?: string }): Promise<PublicUser> {
       await ensureMongoConnected();
       const data = clean({ ...input, role: "role" in input ? asRole(input.role) : undefined });
-      const update = (data as { isActive?: boolean }).isActive === true ? { $set: data, $unset: { deletedAt: "", deletedBy: "" } } : { $set: data };
-      const user = (await MongoUser.findOneAndUpdate({ id }, update, { new: true, projection: { _id: 0, passwordHash: 0 } }).lean().exec()) as PublicUser | null;
-      if (!user) throw new ApiError(404, "User not found", "USER_NOT_FOUND");
-      cache.invalidate("users");
-      cache.invalidate("stats");
-      return user;
+      const unset = "avatar" in input && input.avatar === "" ? { avatar: "" } : {};
+      const update = (data as { isActive?: boolean }).isActive === true
+        ? { $set: data, $unset: { deletedAt: "", deletedBy: "", ...unset } }
+        : Object.keys(unset).length
+          ? { $set: data, $unset: unset }
+          : { $set: data };
+      try {
+        const user = (await MongoUser.findOneAndUpdate({ id }, update, { new: true, projection: { _id: 0, passwordHash: 0 } }).lean().exec()) as PublicUser | null;
+        if (!user) throw new ApiError(404, "User not found", "USER_NOT_FOUND");
+        cache.invalidate("users");
+        cache.invalidate("stats");
+        return user;
+      } catch (error: unknown) {
+        if (typeof error === "object" && error !== null && "code" in error && (error as { code?: number }).code === 11000) throw new ApiError(409, "Email exists", "EMAIL_EXISTS");
+        throw error;
+      }
     },
     async delete(id: number, deletedBy?: number | null): Promise<PublicUser> {
       await ensureMongoConnected();
