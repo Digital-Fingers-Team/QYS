@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import type { MonthlyReportRow, MonthlyReportsSummary } from '@qys/shared';
+import type { MonthlyReportRow, MonthlyReportsSummary, Paginated } from '@qys/shared';
 import { api, apiForm, ApiClientError, downloadApi } from '../lib/api';
 import { field, num, useData, usePaginatedData } from './qys/data';
 import { canAccessReports, canManageAccounts, canOpenAdmin, roleLabel, roleOptionsFor } from './qys/permissions';
@@ -25,6 +25,7 @@ const labels = {
     name: 'الاسم',
     dashboard: 'الرئيسية',
     centers: 'المراكز',
+    map: 'الخريطة',
     ideas: 'الأفكار',
     challenges: 'التحديات',
     complaints: 'الشكاوى',
@@ -46,6 +47,7 @@ const labels = {
     name: 'Name',
     dashboard: 'Dashboard',
     centers: 'Centers',
+    map: 'Map',
     ideas: 'Ideas',
     challenges: 'Challenges',
     complaints: 'Complaints',
@@ -173,6 +175,9 @@ function navIconFor(href: string) {
   if (href.includes('centers')) {
     return <NavSvg><path d="M3 21h18" /><path d="M5 21V7l7-4 7 4v14" /><path d="M9 21v-6h6v6" /><path d="M9 9h.01" /><path d="M12 9h.01" /><path d="M15 9h.01" /><path d="M9 12h.01" /><path d="M12 12h.01" /><path d="M15 12h.01" /></NavSvg>;
   }
+  if (href.includes('map')) {
+    return <NavSvg><path d="M9 18 3 21V6l6-3 6 3 6-3v15l-6 3-6-3Z" /><path d="M9 3v15" /><path d="M15 6v15" /><path d="M12 10.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" /><path d="M12 10.5v3" /></NavSvg>;
+  }
   if (href.includes('ideas')) {
     return <NavSvg><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12.74V17h8v-2.26A7 7 0 0 0 12 2Z" /></NavSvg>;
   }
@@ -229,6 +234,7 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
         ['/admin', t.dashboard],
         ['/admin/users', t.users],
         ['/admin/centers', t.centers],
+        ['/admin/map', t.map],
         ['/admin/ideas', t.ideas],
         ['/admin/challenges', t.challenges],
         ['/admin/complaints', t.complaints],
@@ -238,6 +244,7 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
     : user?.role === 'CENTER_MANAGER'
       ? [
         ['/center/reports', t.reports],
+        ['/center/map', t.map],
         ['/center/ideas', t.ideas],
         ['/center/users', t.users],
         ['/center/challenges', t.challenges],
@@ -247,6 +254,7 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
       : [
         ['/dashboard', t.dashboard],
         ['/centers', t.centers],
+        ['/map', t.map],
         ['/ideas', t.ideas],
         ['/challenges', t.challenges],
         ['/complaints', t.complaints],
@@ -311,12 +319,13 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
   );
 }
 
-export function UserPage({ section }: { section: 'dashboard' | 'centers' | 'ideas' | 'challenges' | 'complaints' | 'reports' | 'settings' }) {
+export function UserPage({ section }: { section: 'dashboard' | 'centers' | 'map' | 'ideas' | 'challenges' | 'complaints' | 'reports' | 'settings' }) {
   const { token, user, setUser, logout } = useSession(true);
   return (
     <Shell>
       {section === 'dashboard' && <UserDashboard token={token} />}
       {section === 'centers' && <CentersPage token={token} admin={false} />}
+      {section === 'map' && <CentersMapPage token={token} />}
       {section === 'ideas' && <IdeasPage token={token} admin={false} />}
       {section === 'challenges' && <ChallengesPage token={token} admin={false} />}
       {section === 'complaints' && <ComplaintsPage token={token} admin={false} />}
@@ -327,7 +336,7 @@ export function UserPage({ section }: { section: 'dashboard' | 'centers' | 'idea
   );
 }
 
-export function CenterPage({ section }: { section: 'reports' | 'ideas' | 'users' | 'challenges' | 'complaints' | 'settings' }) {
+export function CenterPage({ section }: { section: 'reports' | 'map' | 'ideas' | 'users' | 'challenges' | 'complaints' | 'settings' }) {
   const router = useRouter();
   const { token, user, setUser, ready, logout } = useSession(true);
 
@@ -341,10 +350,11 @@ export function CenterPage({ section }: { section: 'reports' | 'ideas' | 'users'
     <Shell>
       {user.role !== 'CENTER_MANAGER' && <Header title="غير مصرح" subtitle="لا تملك صلاحية فتح هذه الصفحة." />}
       {user.role === 'CENTER_MANAGER' && section === 'reports' && <ReportsAdmin token={token} currentUser={user} />}
-      {user.role === 'CENTER_MANAGER' && section === 'ideas' && <IdeasPage token={token} admin={false} viewOnly />}
+      {user.role === 'CENTER_MANAGER' && section === 'map' && <CentersMapPage token={token} />}
+      {user.role === 'CENTER_MANAGER' && section === 'ideas' && <IdeasPage token={token} admin={false} centerApproval />}
       {user.role === 'CENTER_MANAGER' && section === 'users' && <CenterUsersPage token={token} />}
       {user.role === 'CENTER_MANAGER' && section === 'challenges' && <ChallengesPage token={token} admin={false} />}
-      {user.role === 'CENTER_MANAGER' && section === 'complaints' && <ComplaintsPage token={token} admin={false} viewOnly />}
+      {user.role === 'CENTER_MANAGER' && section === 'complaints' && <ComplaintsPage token={token} admin={false} centerApproval />}
       {user.role === 'CENTER_MANAGER' && section === 'settings' && <SettingsPage token={token} user={user} setUser={setUser} logout={logout} />}
     </Shell>
   );
@@ -424,6 +434,166 @@ function CentersPage({ token, admin }: { token: string; admin: boolean }) {
   );
 }
 
+type CenterAreaGroup = {
+  name: string;
+  centers: Center[];
+  x: number;
+  y: number;
+};
+
+const centerMapPositions = [
+  { key: 'بنها', x: 53, y: 31 },
+  { key: 'كفر شكر', x: 66, y: 18 },
+  { key: 'شبين القناطر', x: 70, y: 61 },
+  { key: 'القناطر', x: 20, y: 62 },
+  { key: 'طوخ', x: 50, y: 48 },
+  { key: 'القليوبية', x: 55, y: 66 },
+  { key: 'قليوب', x: 34, y: 68 },
+  { key: 'شبرا', x: 28, y: 82 },
+  { key: 'الخانكة', x: 78, y: 72 },
+  { key: 'قها', x: 45, y: 57 },
+  { key: 'الخصوص', x: 41, y: 79 },
+  { key: 'العبور', x: 86, y: 83 }
+];
+
+function centerMapPosition(location: string, index: number, total: number) {
+  const known = centerMapPositions.find((position) => location.includes(position.key));
+  if (known) return { x: known.x, y: known.y };
+  const angle = (index / Math.max(1, total)) * Math.PI * 2 - Math.PI / 2;
+  return {
+    x: 52 + Math.cos(angle) * 31,
+    y: 54 + Math.sin(angle) * 28
+  };
+}
+
+function groupCentersForMap(centers: Center[]): CenterAreaGroup[] {
+  const byLocation = new Map<string, Center[]>();
+  centers.forEach((center) => {
+    const location = center.location.trim() || 'غير محدد';
+    byLocation.set(location, [...(byLocation.get(location) || []), center]);
+  });
+  const entries = [...byLocation.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'ar'));
+  return entries.map(([name, areaCenters], index) => ({
+    name,
+    centers: [...areaCenters].sort((a, b) => a.name.localeCompare(b.name, 'ar')),
+    ...centerMapPosition(name, index, entries.length)
+  }));
+}
+
+async function loadAllCenters(token: string) {
+  const first = await api<Paginated<Center>>('/centers?page=1&pageSize=100', undefined, token);
+  const rest = await Promise.all(
+    Array.from({ length: Math.max(0, first.totalPages - 1) }, (_, index) =>
+      api<Paginated<Center>>(`/centers?page=${index + 2}&pageSize=100`, undefined, token)
+    )
+  );
+  return [first, ...rest].flatMap((page) => page.items);
+}
+
+function CentersMapPage({ token }: { token: string }) {
+  const [centers, setCenters] = useState<Center[]>([]);
+  const [selectedArea, setSelectedArea] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const areaGroups = useMemo(() => groupCentersForMap(centers), [centers]);
+  const selectedGroup = areaGroups.find((group) => group.name === selectedArea) || areaGroups[0];
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    loadAllCenters(token)
+      .then((items) => {
+        if (active) setCenters(items);
+      })
+      .catch((err) => {
+        if (active) setError((err as Error).message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!areaGroups.length) {
+      setSelectedArea('');
+      return;
+    }
+    if (!selectedArea || !areaGroups.some((group) => group.name === selectedArea)) {
+      setSelectedArea(areaGroups[0].name);
+    }
+  }, [areaGroups, selectedArea]);
+
+  return (
+    <>
+      <Header title="خريطة المراكز" subtitle="عرض مراكز الشباب حسب مناطق محافظة القليوبية." />
+      <div className="grid stats">
+        <Stat title="المراكز على الخريطة" value={loading ? '...' : centers.length} />
+        <Stat title="المناطق" value={areaGroups.length} />
+        <Stat title="المراكز في المنطقة" value={selectedGroup?.centers.length || 0} />
+      </div>
+      {error && <p className="error">{error}</p>}
+      <div className="centers-map-layout">
+        <section className="panel centers-map-panel">
+          <div className="centers-map-canvas" aria-label="خريطة مراكز الشباب في القليوبية" dir="ltr">
+            <svg className="centers-map-art" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <path className="map-region" d="M50 5 C64 8 76 17 83 31 C92 49 88 71 75 84 C62 98 39 96 25 85 C10 73 8 51 17 34 C25 18 36 8 50 5Z" />
+              <path className="map-water" d="M19 92 C28 78 31 64 29 49 C27 34 33 22 45 9" />
+              <path className="map-road" d="M16 67 C33 60 47 56 64 59 C73 61 82 65 90 73" />
+              <path className="map-road" d="M35 17 C43 32 52 43 67 50 C75 54 81 60 85 68" />
+            </svg>
+            {loading && <div className="map-loading">جاري تحميل المراكز...</div>}
+            {areaGroups.map((group) => (
+              <button
+                key={group.name}
+                className={`map-marker ${selectedGroup?.name === group.name ? 'active' : ''}`}
+                style={{ left: `${group.x}%`, top: `${group.y}%` }}
+                type="button"
+                onClick={() => setSelectedArea(group.name)}
+                title={`${group.name} - ${group.centers.length}`}
+              >
+                <span className="map-marker-count">{group.centers.length}</span>
+                <span className="map-marker-label">{group.name}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+        <aside className="panel map-directory">
+          <div className="map-directory-header">
+            <div>
+              <h3>{selectedGroup?.name || 'المناطق'}</h3>
+              <p className="muted">{selectedGroup ? `${selectedGroup.centers.length} مركز` : 'لا توجد بيانات'}</p>
+            </div>
+            <span className="badge">{areaGroups.length}</span>
+          </div>
+          <div className="map-area-list">
+            {areaGroups.map((group) => (
+              <button key={group.name} className={selectedGroup?.name === group.name ? 'active' : ''} type="button" onClick={() => setSelectedArea(group.name)}>
+                <span>{group.name}</span>
+                <strong>{group.centers.length}</strong>
+              </button>
+            ))}
+          </div>
+          <div className="map-centers-list">
+            {(selectedGroup?.centers || []).map((center) => (
+              <article key={center.id} className="map-center-row">
+                <div>
+                  <h4>{center.name}</h4>
+                  <p className="muted">{center.type}</p>
+                </div>
+                <span>{center.rating || '-'}</span>
+              </article>
+            ))}
+          </div>
+        </aside>
+      </div>
+    </>
+  );
+}
+
 function centerManagerCredentials(center: Center) {
   return {
     email: `manager_${center.id}@platform.com`,
@@ -489,10 +659,22 @@ function CenterDirectoryRow({ center, admin, token, onDone }: { center: Center; 
   );
 }
 
-function IdeasPage({ token, admin, viewOnly = false }: { token: string; admin: boolean; viewOnly?: boolean }) {
+function ideaStatusLabel(status: string) {
+  if (status === 'PENDING') return 'قيد مراجعة المركز';
+  if (status === 'ACTIVE') return 'منشورة';
+  if (status === 'RESOLVED') return 'تمت المعالجة';
+  if (status === 'REJECTED') return 'مرفوضة';
+  return status;
+}
+
+function isPublishedIdea(status: string) {
+  return status === 'ACTIVE' || status === 'RESOLVED';
+}
+
+function IdeasPage({ token, admin, viewOnly = false, centerApproval = false }: { token: string; admin: boolean; viewOnly?: boolean; centerApproval?: boolean }) {
   const { items: ideas, load, page, totalPages, setPage } = usePaginatedData<Idea>('/ideas', token, 20);
   const [message, setMessage] = useState('');
-  const readOnly = admin || viewOnly;
+  const readOnly = admin || viewOnly || centerApproval;
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -500,6 +682,7 @@ function IdeasPage({ token, admin, viewOnly = false }: { token: string; admin: b
     try {
       await api('/ideas', { method: 'POST', body: JSON.stringify({ title: requiredText(form, 'title'), description: requiredText(form, 'description') }) }, token);
       form.reset();
+      setMessage('تم إرسال الفكرة إلى المركز لمراجعتها قبل النشر.');
       load();
     } catch (err) {
       setMessage((err as Error).message);
@@ -511,28 +694,46 @@ function IdeasPage({ token, admin, viewOnly = false }: { token: string; admin: b
       {!readOnly && <form className="panel grid" onSubmit={create}>
         <input className="input" name="title" placeholder="عنوان الفكرة" required />
         <textarea className="textarea" name="description" placeholder="وصف الفكرة" required />
-        <button className="btn primary">نشر الفكرة</button>
+        <button className="btn primary">إرسال للمراجعة</button>
       </form>}
-      {message && <p className="error">{message}</p>}
+      {message && <p className={message.startsWith('تم ') ? 'muted' : 'error'}>{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
-        {ideas.map((idea) => <IdeaCard key={idea.id} idea={idea} token={token} readOnly={readOnly} onDone={load} />)}
+        {ideas.map((idea) => <IdeaCard key={idea.id} idea={idea} token={token} readOnly={readOnly} admin={admin} centerApproval={centerApproval} onDone={load} />)}
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
   );
 }
 
-function IdeaCard({ idea, token, readOnly, onDone }: { idea: Idea; token: string; readOnly?: boolean; onDone?: () => void }) {
+function IdeaCard({ idea, token, readOnly, admin, centerApproval, onDone }: { idea: Idea; token: string; readOnly?: boolean; admin?: boolean; centerApproval?: boolean; onDone?: () => void }) {
   async function vote() {
     await api(`/ideas/${idea.id}/vote`, { method: 'POST' }, token);
     onDone?.();
   }
+  async function toggleVisibility() {
+    await api(`/ideas/${idea.id}/visibility`, { method: 'PATCH', body: JSON.stringify({ visibleToUsers: idea.visibleToUsers === false }) }, token);
+    onDone?.();
+  }
+  async function review(status: 'ACTIVE' | 'REJECTED') {
+    await api(`/ideas/${idea.id}/center-status`, { method: 'PATCH', body: JSON.stringify({ status }) }, token);
+    onDone?.();
+  }
+  const visibleToUsers = idea.visibleToUsers !== false;
+  const canVote = !readOnly && isPublishedIdea(idea.status);
+  const canReview = centerApproval && idea.status === 'PENDING';
   return (
     <article className="item-card">
       <h3>{idea.title}</h3>
-      <p className="muted">{idea.user?.name || 'مستخدم'} | {idea.status}</p>
+      <p className="muted">{idea.user?.name || 'مستخدم'} | {ideaStatusLabel(idea.status)}{admin ? ` | ${visibleToUsers ? 'ظاهرة للمستخدمين' : 'مخفية عن المستخدمين'}` : ''}</p>
       <p>{idea.description}</p>
-      {!readOnly && <button className="btn" onClick={vote}>تصويت ({idea.votes})</button>}
+      {canVote && <button className="btn" onClick={vote}>تصويت ({idea.votes})</button>}
+      {admin && <button className={visibleToUsers ? 'btn danger' : 'btn primary'} type="button" onClick={toggleVisibility}>
+        {visibleToUsers ? 'إخفاء عن المستخدمين' : 'إظهار للمستخدمين'}
+      </button>}
+      {canReview && <div className="inline-actions" style={{ marginTop: 10 }}>
+        <button className="btn primary" type="button" onClick={() => review('ACTIVE')}>قبول ونشر</button>
+        <button className="btn danger" type="button" onClick={() => review('REJECTED')}>رفض</button>
+      </div>}
     </article>
   );
 }
@@ -593,10 +794,24 @@ function ChallengeCard({ challenge, token, admin, onDone }: { challenge: Challen
   );
 }
 
-function ComplaintsPage({ token, admin, viewOnly = false }: { token: string; admin: boolean; viewOnly?: boolean }) {
+function complaintStatusLabel(status: string) {
+  if (status === 'PENDING') return 'قيد المعالجة';
+  if (status === 'RESOLVED') return 'تم الحل';
+  if (status === 'REJECTED') return 'مرفوضة';
+  if (status === 'ACTIVE') return 'منشورة';
+  return status;
+}
+
+function complaintReviewLabel(complaint: Complaint) {
+  if (complaint.centerReviewStatus === 'PENDING') return 'قيد مراجعة المركز';
+  if (complaint.centerReviewStatus === 'REJECTED') return 'مرفوضة من المركز';
+  return complaintStatusLabel(complaint.status);
+}
+
+function ComplaintsPage({ token, admin, viewOnly = false, centerApproval = false }: { token: string; admin: boolean; viewOnly?: boolean; centerApproval?: boolean }) {
   const { items: complaints, load, page, totalPages, setPage } = usePaginatedData<Complaint>('/complaints', token, 20);
   const [message, setMessage] = useState('');
-  const readOnly = admin || viewOnly;
+  const readOnly = admin || viewOnly || centerApproval;
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -604,6 +819,7 @@ function ComplaintsPage({ token, admin, viewOnly = false }: { token: string; adm
     try {
       await api('/complaints', { method: 'POST', body: JSON.stringify({ title: requiredText(form, 'title'), description: requiredText(form, 'description'), type: requiredText(form, 'type') }) }, token);
       form.reset();
+      setMessage('تم إرسال الطلب إلى المركز لمراجعته قبل النشر.');
       load();
     } catch (err) {
       setMessage((err as Error).message);
@@ -616,33 +832,49 @@ function ComplaintsPage({ token, admin, viewOnly = false }: { token: string; adm
         <select className="select" name="type"><option>شكوى</option><option>مقترح</option><option>صيانة</option><option>أخرى</option></select>
         <input className="input" name="title" placeholder="العنوان" required />
         <textarea className="textarea" name="description" placeholder="التفاصيل" required />
-        <button className="btn primary">إرسال</button>
+        <button className="btn primary">إرسال للمراجعة</button>
       </form>}
-      {message && <p className="error">{message}</p>}
+      {message && <p className={message.startsWith('تم ') ? 'muted' : 'error'}>{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
-        {complaints.map((complaint) => <ComplaintCard key={complaint.id} complaint={complaint} token={token} admin={admin} onDone={load} />)}
+        {complaints.map((complaint) => <ComplaintCard key={complaint.id} complaint={complaint} token={token} admin={admin} centerApproval={centerApproval} onDone={load} />)}
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
   );
 }
 
-function ComplaintCard({ complaint, token, admin, onDone }: { complaint: Complaint; token: string; admin: boolean; onDone: () => void }) {
-  async function status(value: string) {
-    await api(`/complaints/${complaint.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: value }) }, token);
+function ComplaintCard({ complaint, token, admin, centerApproval, onDone }: { complaint: Complaint; token: string; admin: boolean; centerApproval?: boolean; onDone: () => void }) {
+  async function progress(data: { status?: string; showProgress?: boolean }) {
+    await api(`/complaints/${complaint.id}/progress`, { method: 'PATCH', body: JSON.stringify(data) }, token);
     onDone();
   }
+  async function review(status: 'ACTIVE' | 'REJECTED') {
+    await api(`/complaints/${complaint.id}/center-status`, { method: 'PATCH', body: JSON.stringify({ status }) }, token);
+    onDone();
+  }
+  const canManage = admin || centerApproval;
+  const canReview = canManage && complaint.centerReviewStatus === 'PENDING';
+  const canUpdateProgress = canManage && (complaint.centerReviewStatus === 'APPROVED' || !complaint.centerReviewStatus);
   return (
     <article className="item-card">
       <h3>{complaint.title}</h3>
       <p className="muted">{complaint.user?.name || 'مستخدم'} | {complaint.type}</p>
       <p>{complaint.description}</p>
-      <span className="badge">{complaint.status}</span>
-      {admin && <select className="select" style={{ marginTop: 10 }} value={complaint.status} onChange={(e) => status(e.target.value)}>
-        <option value="PENDING">قيد المعالجة</option>
-        <option value="RESOLVED">تم الحل</option>
-        <option value="REJECTED">مرفوضة</option>
-      </select>}
+      <span className="badge">{complaintReviewLabel(complaint)}</span>
+      {canReview && <div className="inline-actions" style={{ marginTop: 10 }}>
+        <button className="btn primary" type="button" onClick={() => review('ACTIVE')}>قبول وبدء المعالجة</button>
+        <button className="btn danger" type="button" onClick={() => review('REJECTED')}>رفض</button>
+      </div>}
+      {canUpdateProgress && <div className="grid" style={{ marginTop: 10 }}>
+        <select className="select" value={complaint.status} onChange={(e) => progress({ status: e.target.value })}>
+          <option value="PENDING">قيد المعالجة</option>
+          <option value="RESOLVED">تم الحل</option>
+          <option value="REJECTED">مرفوضة</option>
+        </select>
+        <button className={complaint.showProgress ? 'btn primary' : 'btn'} type="button" onClick={() => progress({ showProgress: !complaint.showProgress })}>
+          {complaint.showProgress ? 'ظاهر للمستخدم' : 'مخفي عن المستخدم'}
+        </button>
+      </div>}
     </article>
   );
 }
@@ -724,7 +956,7 @@ function SettingsPage({ token, user, setUser, logout }: { token: string; user: U
   );
 }
 
-export function AdminPage({ section }: { section: 'dashboard' | 'users' | 'centers' | 'ideas' | 'challenges' | 'complaints' | 'reports' | 'settings' }) {
+export function AdminPage({ section }: { section: 'dashboard' | 'users' | 'centers' | 'map' | 'ideas' | 'challenges' | 'complaints' | 'reports' | 'settings' }) {
   const router = useRouter();
   const { token, user, setUser, ready, logout } = useSession(true);
   const allowed = user && canManageAccounts(user.role);
@@ -741,6 +973,7 @@ export function AdminPage({ section }: { section: 'dashboard' | 'users' | 'cente
       {allowed && section === 'dashboard' && <AdminDashboard token={token} />}
       {allowed && section === 'users' && <UsersAdmin token={token} currentUser={user} />}
       {allowed && section === 'centers' && <CentersPage token={token} admin />}
+      {allowed && section === 'map' && <CentersMapPage token={token} />}
       {allowed && section === 'ideas' && <IdeasPage token={token} admin />}
       {allowed && section === 'challenges' && <ChallengesPage token={token} admin />}
       {allowed && section === 'complaints' && <ComplaintsPage token={token} admin />}
@@ -985,6 +1218,52 @@ function monthValue(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
+const arabicMonthFormatter = new Intl.DateTimeFormat('ar-EG', { month: 'long' });
+const arabicYearFormatter = new Intl.NumberFormat('ar-EG', { useGrouping: false });
+const arabicMonthNames = Array.from({ length: 12 }, (_, index) => arabicMonthFormatter.format(new Date(2024, index, 1)));
+
+function parseMonthValue(value: string) {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(value);
+  if (!match) return parseMonthValue(currentMonthValue());
+  return { year: Number(match[1]), month: Number(match[2]) };
+}
+
+function buildMonthValue(year: number, month: number) {
+  const safeYear = Math.min(2100, Math.max(2000, Math.trunc(year || new Date().getFullYear())));
+  const safeMonth = Math.min(12, Math.max(1, Math.trunc(month || 1)));
+  return `${safeYear}-${String(safeMonth).padStart(2, '0')}`;
+}
+
+function formatMonthArabic(value?: string | null) {
+  if (!value) return '-';
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(value);
+  if (!match) return value;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  return `${arabicMonthFormatter.format(new Date(year, month - 1, 1))} ${arabicYearFormatter.format(year)}`;
+}
+
+function ArabicMonthPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const { year, month } = parseMonthValue(value);
+  const years = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const start = Math.min(currentYear - 5, year - 2);
+    const end = Math.max(currentYear + 1, year + 2);
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+  }, [year]);
+
+  return (
+    <div className="month-picker" dir="rtl">
+      <select className="select" value={String(month)} onChange={(e) => onChange(buildMonthValue(year, Number(e.target.value)))}>
+        {arabicMonthNames.map((name, index) => <option key={name} value={String(index + 1)}>{name}</option>)}
+      </select>
+      <select className="select month-year-select" value={String(year)} onChange={(e) => onChange(buildMonthValue(Number(e.target.value), month))}>
+        {years.map((yearOption) => <option key={yearOption} value={String(yearOption)}>{arabicYearFormatter.format(yearOption)}</option>)}
+      </select>
+    </div>
+  );
+}
+
 function formatMoney(value: number) {
   return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value);
 }
@@ -1068,7 +1347,7 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
         </div>}
         <label className="grid">
           <span className="muted">الشهر</span>
-          <input className="input" type="month" value={month} onChange={(e) => setMonth(e.target.value || currentMonthValue())} />
+          <ArabicMonthPicker value={month} onChange={setMonth} />
         </label>
         <button className="btn" type="button" onClick={() => download(`/monthly-reports/template?month=${month}`)}>تحميل القالب</button>
         {isManager && <button className="btn primary" type="button" onClick={() => download(`/monthly-reports/export?month=${month}`)}>Download Monthly Report</button>}
@@ -1094,7 +1373,7 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
           <thead><tr><th>المركز</th><th>الشهر</th><th>الإيرادات</th><th>المصروفات</th><th>الندوات</th><th>الملف</th></tr></thead>
           <tbody>{reports.map((report) => <tr key={report.id}>
             <td>{report.centerName}</td>
-            <td>{report.month}</td>
+            <td>{formatMonthArabic(report.month)}</td>
             <td>{formatMoney(report.revenues)}</td>
             <td>{formatMoney(report.expenses)}</td>
             <td>{report.seminarsCount}</td>
@@ -1109,7 +1388,7 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
         <table className="table">
           <thead><tr><th>الشهر</th><th>الإيرادات</th><th>المصروفات</th><th>الندوات</th><th>المراكز</th></tr></thead>
           <tbody>{(summary?.monthlyStatistics || []).map((item) => <tr key={item.month}>
-            <td>{item.month}</td>
+            <td>{formatMonthArabic(item.month)}</td>
             <td>{formatMoney(item.totalRevenues)}</td>
             <td>{formatMoney(item.totalExpenses)}</td>
             <td>{item.totalSeminars}</td>
@@ -1126,7 +1405,7 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
         </div>
         <div className="panel">
           <h3>أحدث عمليات الرفع</h3>
-          {(summary?.latestUploads || []).map((upload) => <p key={upload.id} className="muted">{upload.originalName} - {upload.month || '-'} - {upload.status} - {upload.centerName || '-'}</p>)}
+          {(summary?.latestUploads || []).map((upload) => <p key={upload.id} className="muted">{upload.originalName} - {formatMonthArabic(upload.month)} - {upload.status} - {upload.centerName || '-'}</p>)}
         </div>
       </div>
     </>

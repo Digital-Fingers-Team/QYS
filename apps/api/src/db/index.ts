@@ -82,6 +82,8 @@ export interface ChallengeParticipationRecord {
 export interface IdeaRecord {
   id: number;
   userId: number;
+  centerId?: number | null;
+  visibleToUsers?: boolean;
   title: string;
   description: string;
   status: string;
@@ -92,6 +94,10 @@ export interface IdeaRecord {
 export interface ComplaintRecord {
   id: number;
   userId: number;
+  centerId?: number | null;
+  centerReviewStatus?: string | null;
+  showProgress?: boolean;
+  resolvedAt?: Date | null;
   title: string;
   description: string;
   status: string;
@@ -196,6 +202,8 @@ type IdeaListItem = IdeaRecord & { user: { name: string } };
 type ComplaintListItem = ComplaintRecord & { user: { name: string } };
 type PageFilter = Pick<PaginationQueryInput, "page" | "pageSize">;
 type ListFilter = { q?: string; page?: number; pageSize?: number };
+type IdeaListFilter = ListFilter & { userId?: number; centerId?: number; statuses?: string[]; includeUserId?: number; visibleToUsers?: boolean };
+type ComplaintListFilter = ListFilter & { userId?: number; centerId?: number; centerReviewStatus?: string; includeLegacyApproved?: boolean; visibleToUser?: boolean };
 
 const counterSchema = new Schema<CounterRecord>({ key: { type: String, required: true, unique: true }, seq: { type: Number, required: true, default: 0 } }, { versionKey: false });
 
@@ -276,6 +284,8 @@ const mongoIdeaSchema = new Schema<IdeaRecord>(
   {
     id: { type: Number, required: true, unique: true },
     userId: { type: Number, required: true },
+    centerId: { type: Number },
+    visibleToUsers: { type: Boolean, default: true, required: true },
     title: { type: String, required: true },
     description: { type: String, required: true },
     status: { type: String, default: "PENDING", required: true },
@@ -285,12 +295,18 @@ const mongoIdeaSchema = new Schema<IdeaRecord>(
   { versionKey: false }
 );
 mongoIdeaSchema.index({ userId: 1, createdAt: -1 });
+mongoIdeaSchema.index({ centerId: 1, status: 1, createdAt: -1 });
+mongoIdeaSchema.index({ visibleToUsers: 1, status: 1, createdAt: -1 });
 mongoIdeaSchema.index({ status: 1, createdAt: -1 });
 
 const mongoComplaintSchema = new Schema<ComplaintRecord>(
   {
     id: { type: Number, required: true, unique: true },
     userId: { type: Number, required: true },
+    centerId: { type: Number },
+    centerReviewStatus: { type: String, default: "PENDING", required: true },
+    showProgress: { type: Boolean, default: false, required: true },
+    resolvedAt: { type: Date },
     title: { type: String, required: true },
     description: { type: String, required: true },
     status: { type: String, default: "PENDING", required: true },
@@ -300,6 +316,9 @@ const mongoComplaintSchema = new Schema<ComplaintRecord>(
   { versionKey: false }
 );
 mongoComplaintSchema.index({ userId: 1, createdAt: -1 });
+mongoComplaintSchema.index({ centerId: 1, centerReviewStatus: 1, createdAt: -1 });
+mongoComplaintSchema.index({ centerReviewStatus: 1, status: 1, createdAt: -1 });
+mongoComplaintSchema.index({ userId: 1, showProgress: 1, status: 1, resolvedAt: -1 });
 mongoComplaintSchema.index({ status: 1, createdAt: -1 });
 
 const mongoActivitySchema = new Schema<ActivityRecord>(
@@ -453,8 +472,62 @@ function regexFor(value?: string) {
   return new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 }
 
+function mongoIn<T>(values: T[]) {
+  return mongoose.trusted({ $in: values });
+}
+
+function mongoExists(value: boolean) {
+  return mongoose.trusted({ $exists: value });
+}
+
+function ideaWhere(filter?: IdeaListFilter): Record<string, unknown> {
+  const and: Record<string, unknown>[] = [];
+  if (filter?.userId) and.push({ userId: filter.userId });
+  if (filter?.centerId) and.push({ centerId: filter.centerId });
+  if (filter?.visibleToUsers === true) {
+    and.push({ $or: [{ visibleToUsers: true }, { visibleToUsers: mongoExists(false) }] });
+  } else if (filter?.visibleToUsers === false) {
+    and.push({ visibleToUsers: false });
+  }
+  if (filter?.statuses?.length && filter.includeUserId) {
+    and.push({ $or: [{ status: mongoIn(filter.statuses) }, { userId: filter.includeUserId }] });
+  } else if (filter?.statuses?.length) {
+    and.push({ status: mongoIn(filter.statuses) });
+  } else if (filter?.includeUserId) {
+    and.push({ userId: filter.includeUserId });
+  }
+  if (and.length === 0) return {};
+  if (and.length === 1) return and[0];
+  return { $and: and };
+}
+
+function complaintWhere(filter?: ComplaintListFilter): Record<string, unknown> {
+  const and: Record<string, unknown>[] = [];
+  const base = clean({
+    userId: filter?.userId,
+    centerId: filter?.centerId
+  }) as Record<string, unknown>;
+  if (Object.keys(base).length) and.push(base);
+  if (filter?.centerReviewStatus && filter.includeLegacyApproved) {
+    and.push({ $or: [{ centerReviewStatus: filter.centerReviewStatus }, { centerReviewStatus: mongoExists(false) }] });
+  } else if (filter?.centerReviewStatus) {
+    and.push({ centerReviewStatus: filter.centerReviewStatus });
+  }
+  if (filter?.visibleToUser) {
+    const solvedCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    and.push(
+      { showProgress: true },
+      { $or: [{ centerReviewStatus: "APPROVED" }, { centerReviewStatus: mongoExists(false) }] },
+      { $or: [{ status: mongoose.trusted({ $ne: "RESOLVED" }) }, { resolvedAt: mongoose.trusted({ $gte: solvedCutoff }) }] }
+    );
+  }
+  if (and.length === 0) return {};
+  if (and.length === 1) return and[0];
+  return { $and: and };
+}
+
 function notDeleted() {
-  return { $or: [{ deletedAt: { $exists: false } }, { deletedAt: null }] };
+  return { $or: [{ deletedAt: mongoExists(false) }, { deletedAt: null }] };
 }
 
 export async function initDatabase(): Promise<void> {
@@ -640,12 +713,12 @@ export const db = {
       const [participationCounts, joined] = await Promise.all([
         challengeIds.length
           ? MongoChallengeParticipation.aggregate<{ _id: number; count: number }>([
-              { $match: { challengeId: { $in: challengeIds } } },
+              { $match: { challengeId: mongoIn(challengeIds) } },
               { $group: { _id: "$challengeId", count: { $sum: 1 } } }
             ])
           : [],
         filter?.userId && challengeIds.length
-          ? MongoChallengeParticipation.find({ userId: filter.userId, challengeId: { $in: challengeIds } }, { _id: 0, challengeId: 1 }).lean().exec()
+          ? MongoChallengeParticipation.find({ userId: filter.userId, challengeId: mongoIn(challengeIds) }, { _id: 0, challengeId: 1 }).lean().exec()
           : []
       ]);
       const counts = new Map(participationCounts.map((item) => [item._id, item.count]));
@@ -705,18 +778,18 @@ export const db = {
   },
 
   ideas: {
-    async list(filter?: { userId?: number }): Promise<IdeaListItem[]> {
+    async list(filter?: IdeaListFilter): Promise<IdeaListItem[]> {
       await ensureMongoConnected();
-      const where = filter?.userId ? { userId: filter.userId } : {};
+      const where = ideaWhere(filter);
       const ideas = (await MongoIdea.find(where, { _id: 0 }).sort({ createdAt: -1 }).lean().exec()) as IdeaRecord[];
       const userIds = [...new Set(ideas.map((idea) => idea.userId))];
-      const users = (await MongoUser.find({ id: mongoose.trusted({ $in: userIds }) }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>;
+      const users = (await MongoUser.find({ id: mongoIn(userIds) }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>;
       const names = new Map(users.map((user) => [user.id, user.name]));
       return ideas.map((idea) => ({ ...idea, user: { name: names.get(idea.userId) ?? "Unknown" } }));
     },
-    async listPage(filter?: { userId?: number; page?: number; pageSize?: number }): Promise<Paginated<IdeaListItem>> {
+    async listPage(filter?: IdeaListFilter): Promise<Paginated<IdeaListItem>> {
       await ensureMongoConnected();
-      const where = filter?.userId ? { userId: filter.userId } : {};
+      const where = ideaWhere(filter);
       const { page, pageSize } = pageFilter(filter);
       const [ideas, total] = await Promise.all([
         MongoIdea.find(where, { _id: 0 }).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean().exec(),
@@ -724,22 +797,26 @@ export const db = {
       ]);
       const userIds = [...new Set((ideas as IdeaRecord[]).map((idea) => idea.userId))];
       const users = userIds.length
-        ? ((await MongoUser.find({ id: { $in: userIds } }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>)
+        ? ((await MongoUser.find({ id: mongoIn(userIds) }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>)
         : [];
       const names = new Map(users.map((user) => [user.id, user.name]));
       const items = (ideas as IdeaRecord[]).map((idea) => ({ ...idea, user: { name: names.get(idea.userId) ?? "Unknown" } }));
       return paginated(items, total, page, pageSize);
     },
-    async create(data: IdeaInput, userId: number): Promise<IdeaRecord> {
+    async create(data: IdeaInput, userId: number, centerId?: number | null): Promise<IdeaRecord> {
       await ensureMongoConnected();
-      const idea = await MongoIdea.create({ ...data, userId, id: await nextId("ideas") });
+      const idea = await MongoIdea.create({ ...data, userId, centerId: centerId ?? undefined, status: "PENDING", visibleToUsers: true, id: await nextId("ideas") });
       cache.invalidate("stats");
       return idea.toObject() as unknown as IdeaRecord;
     },
     async vote(id: number): Promise<IdeaRecord> {
       await ensureMongoConnected();
-      const idea = (await MongoIdea.findOneAndUpdate({ id }, { $inc: { votes: 1 } }, { new: true, projection: { _id: 0 } }).lean().exec()) as IdeaRecord | null;
-      if (!idea) throw new ApiError(404, "Idea not found", "IDEA_NOT_FOUND");
+      const idea = (await MongoIdea.findOneAndUpdate(
+        { id, status: mongoIn(["ACTIVE", "RESOLVED"]), $or: [{ visibleToUsers: true }, { visibleToUsers: mongoExists(false) }] },
+        { $inc: { votes: 1 } },
+        { new: true, projection: { _id: 0 } }
+      ).lean().exec()) as IdeaRecord | null;
+      if (!idea) throw new ApiError(404, "Idea not found or not published", "IDEA_NOT_PUBLISHED");
       cache.invalidate("stats");
       return idea;
     },
@@ -749,21 +826,36 @@ export const db = {
       if (!idea) throw new ApiError(404, "Idea not found", "IDEA_NOT_FOUND");
       cache.invalidate("stats");
       return idea;
+    },
+    async updateVisibility(id: number, visibleToUsers: boolean): Promise<IdeaRecord> {
+      await ensureMongoConnected();
+      const idea = (await MongoIdea.findOneAndUpdate({ id }, { $set: { visibleToUsers } }, { new: true, projection: { _id: 0 } }).lean().exec()) as IdeaRecord | null;
+      if (!idea) throw new ApiError(404, "Idea not found", "IDEA_NOT_FOUND");
+      cache.invalidate("stats");
+      return idea;
+    },
+    async updateStatusForCenter(id: number, centerId: number, status: string): Promise<IdeaRecord> {
+      await ensureMongoConnected();
+      if (!["ACTIVE", "REJECTED"].includes(status)) throw new ApiError(400, "Center review can only publish or reject ideas.", "INVALID_CENTER_IDEA_STATUS");
+      const idea = (await MongoIdea.findOneAndUpdate({ id, centerId, status: "PENDING" }, { $set: { status } }, { new: true, projection: { _id: 0 } }).lean().exec()) as IdeaRecord | null;
+      if (!idea) throw new ApiError(404, "Idea not found for this center or already reviewed", "CENTER_IDEA_NOT_FOUND");
+      cache.invalidate("stats");
+      return idea;
     }
   },
 
   complaints: {
-    async list(userId?: number): Promise<ComplaintListItem[]> {
+    async list(filter?: ComplaintListFilter): Promise<ComplaintListItem[]> {
       await ensureMongoConnected();
-      const complaints = (await MongoComplaint.find(userId ? { userId } : {}, { _id: 0 }).sort({ createdAt: -1 }).lean().exec()) as ComplaintRecord[];
+      const complaints = (await MongoComplaint.find(complaintWhere(filter), { _id: 0 }).sort({ createdAt: -1 }).lean().exec()) as ComplaintRecord[];
       const userIds = [...new Set(complaints.map((complaint) => complaint.userId))];
-      const users = (await MongoUser.find({ id: mongoose.trusted({ $in: userIds }) }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>;
+      const users = (await MongoUser.find({ id: mongoIn(userIds) }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>;
       const names = new Map(users.map((user) => [user.id, user.name]));
       return complaints.map((complaint) => ({ ...complaint, user: { name: names.get(complaint.userId) ?? "Unknown" } }));
     },
-    async listPage(filter?: { userId?: number; page?: number; pageSize?: number }): Promise<Paginated<ComplaintListItem>> {
+    async listPage(filter?: ComplaintListFilter): Promise<Paginated<ComplaintListItem>> {
       await ensureMongoConnected();
-      const where = filter?.userId ? { userId: filter.userId } : {};
+      const where = complaintWhere(filter);
       const { page, pageSize } = pageFilter(filter);
       const [complaints, total] = await Promise.all([
         MongoComplaint.find(where, { _id: 0 }).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean().exec(),
@@ -771,21 +863,74 @@ export const db = {
       ]);
       const userIds = [...new Set((complaints as ComplaintRecord[]).map((complaint) => complaint.userId))];
       const users = userIds.length
-        ? ((await MongoUser.find({ id: { $in: userIds } }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>)
+        ? ((await MongoUser.find({ id: mongoIn(userIds) }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>)
         : [];
       const names = new Map(users.map((user) => [user.id, user.name]));
       const items = (complaints as ComplaintRecord[]).map((complaint) => ({ ...complaint, user: { name: names.get(complaint.userId) ?? "Unknown" } }));
       return paginated(items, total, page, pageSize);
     },
-    async create(data: ComplaintInput, userId: number): Promise<ComplaintRecord> {
+    async create(data: ComplaintInput, userId: number, centerId?: number | null): Promise<ComplaintRecord> {
       await ensureMongoConnected();
-      const complaint = await MongoComplaint.create({ ...data, userId, id: await nextId("complaints") });
+      const complaint = await MongoComplaint.create({
+        ...data,
+        userId,
+        centerId: centerId ?? undefined,
+        centerReviewStatus: centerId ? "PENDING" : "APPROVED",
+        showProgress: false,
+        id: await nextId("complaints")
+      });
       cache.invalidate("stats");
       return complaint.toObject() as unknown as ComplaintRecord;
     },
     async updateStatus(id: number, status: string): Promise<ComplaintRecord> {
       await ensureMongoConnected();
-      const complaint = (await MongoComplaint.findOneAndUpdate({ id }, { $set: { status } }, { new: true, projection: { _id: 0 } }).lean().exec()) as ComplaintRecord | null;
+      const update = status === "RESOLVED" ? { $set: { status, resolvedAt: new Date() } } : { $set: { status }, $unset: { resolvedAt: "" } };
+      const complaint = (await MongoComplaint.findOneAndUpdate({ id }, update, { new: true, projection: { _id: 0 } }).lean().exec()) as ComplaintRecord | null;
+      if (!complaint) throw new ApiError(404, "Complaint not found", "COMPLAINT_NOT_FOUND");
+      cache.invalidate("stats");
+      return complaint;
+    },
+    async updateCenterReviewStatus(id: number, centerId: number, status: string): Promise<ComplaintRecord> {
+      await ensureMongoConnected();
+      const centerReviewStatus = status === "ACTIVE" || status === "APPROVED" ? "APPROVED" : status;
+      if (!["APPROVED", "REJECTED"].includes(centerReviewStatus)) throw new ApiError(400, "Center review can only approve or reject complaints.", "INVALID_CENTER_COMPLAINT_STATUS");
+      const update = centerReviewStatus === "APPROVED"
+        ? { $set: { centerReviewStatus, status: "PENDING", showProgress: true }, $unset: { resolvedAt: "" } }
+        : { $set: { centerReviewStatus, showProgress: false }, $unset: { resolvedAt: "" } };
+      const complaint = (await MongoComplaint.findOneAndUpdate(
+        { id, centerId, centerReviewStatus: "PENDING" },
+        update,
+        { new: true, projection: { _id: 0 } }
+      ).lean().exec()) as ComplaintRecord | null;
+      if (!complaint) throw new ApiError(404, "Complaint not found for this center or already reviewed", "CENTER_COMPLAINT_NOT_FOUND");
+      cache.invalidate("stats");
+      return complaint;
+    },
+    async updateReviewStatus(id: number, status: string): Promise<ComplaintRecord> {
+      await ensureMongoConnected();
+      const centerReviewStatus = status === "ACTIVE" || status === "APPROVED" ? "APPROVED" : status;
+      if (!["APPROVED", "REJECTED"].includes(centerReviewStatus)) throw new ApiError(400, "Review can only approve or reject complaints.", "INVALID_COMPLAINT_REVIEW_STATUS");
+      const update = centerReviewStatus === "APPROVED"
+        ? { $set: { centerReviewStatus, status: "PENDING", showProgress: true }, $unset: { resolvedAt: "" } }
+        : { $set: { centerReviewStatus, showProgress: false }, $unset: { resolvedAt: "" } };
+      const complaint = (await MongoComplaint.findOneAndUpdate({ id }, update, { new: true, projection: { _id: 0 } }).lean().exec()) as ComplaintRecord | null;
+      if (!complaint) throw new ApiError(404, "Complaint not found", "COMPLAINT_NOT_FOUND");
+      cache.invalidate("stats");
+      return complaint;
+    },
+    async updateProgress(id: number, data: { status?: string; showProgress?: boolean }, centerId?: number | null): Promise<ComplaintRecord> {
+      await ensureMongoConnected();
+      const set = clean({
+        status: data.status,
+        showProgress: data.showProgress
+      }) as Record<string, unknown>;
+      const update = data.status === "RESOLVED"
+        ? { $set: { ...set, resolvedAt: new Date() } }
+        : data.status
+          ? { $set: set, $unset: { resolvedAt: "" } }
+          : { $set: set };
+      const where = clean({ id, centerId: centerId ?? undefined }) as Record<string, unknown>;
+      const complaint = (await MongoComplaint.findOneAndUpdate(where, update, { new: true, projection: { _id: 0 } }).lean().exec()) as ComplaintRecord | null;
       if (!complaint) throw new ApiError(404, "Complaint not found", "COMPLAINT_NOT_FOUND");
       cache.invalidate("stats");
       return complaint;
@@ -976,7 +1121,7 @@ export const db = {
           MongoCenter.countDocuments({}).exec(),
           MongoChallenge.countDocuments({}).exec(),
           MongoIdea.countDocuments({ status: "PENDING" }).exec(),
-          MongoComplaint.countDocuments({ status: "PENDING" }).exec(),
+          MongoComplaint.countDocuments({ status: "PENDING", $or: [{ centerReviewStatus: "APPROVED" }, { centerReviewStatus: mongoExists(false) }] }).exec(),
           MongoChallengeParticipation.aggregate<{ _id: null; count: number }>([{ $group: { _id: null, count: { $sum: 1 } } }]).exec(),
           db.activities.list(8)
         ]);
@@ -994,12 +1139,15 @@ export const db = {
     async me(userId: number) {
       const [user, ideas, joinedChallenges, complaints, voteGroups, suggestedChallenges, recentIdeas] = await Promise.all([
         db.users.findById(userId),
-        MongoIdea.countDocuments({ userId }).exec(),
+        MongoIdea.countDocuments(ideaWhere({ userId, visibleToUsers: true })).exec(),
         MongoChallengeParticipation.countDocuments({ userId }).exec(),
-        MongoComplaint.countDocuments({ userId }).exec(),
-        MongoIdea.aggregate<{ _id: null; votes: number }>([{ $match: { userId } }, { $group: { _id: null, votes: { $sum: "$votes" } } }]).exec(),
+        MongoComplaint.countDocuments(complaintWhere({ userId, visibleToUser: true })).exec(),
+        MongoIdea.aggregate<{ _id: null; votes: number }>([
+          { $match: { userId, $or: [{ visibleToUsers: true }, { visibleToUsers: { $exists: false } }] } },
+          { $group: { _id: null, votes: { $sum: "$votes" } } }
+        ]).exec(),
         db.challenges.listPage({ userId, page: 1, pageSize: 10 }),
-        db.ideas.listPage({ userId, page: 1, pageSize: 3 })
+        db.ideas.listPage({ userId, visibleToUsers: true, page: 1, pageSize: 3 })
       ]);
       return {
         user,
@@ -1018,8 +1166,8 @@ async function enrichMonthlyReports(reports: MonthlyReportRecord[]): Promise<Mon
   const centerIds = [...new Set(reports.map((report) => report.centerId))];
   const fileIds = [...new Set(reports.map((report) => report.uploadedFileId).filter((id): id is number => typeof id === "number"))];
   const [centers, files] = await Promise.all([
-    centerIds.length ? MongoCenter.find({ id: { $in: centerIds } }, { _id: 0, id: 1, name: 1 }).lean().exec() : [],
-    fileIds.length ? MongoUploadedFile.find({ id: { $in: fileIds } }, { _id: 0, id: 1, originalName: 1 }).lean().exec() : []
+    centerIds.length ? MongoCenter.find({ id: mongoIn(centerIds) }, { _id: 0, id: 1, name: 1 }).lean().exec() : [],
+    fileIds.length ? MongoUploadedFile.find({ id: mongoIn(fileIds) }, { _id: 0, id: 1, originalName: 1 }).lean().exec() : []
   ]);
   const centerNames = new Map((centers as Array<Pick<CenterRecord, "id" | "name">>).map((center) => [center.id, center.name]));
   const fileNames = new Map((files as Array<Pick<UploadedFileRecord, "id" | "originalName">>).map((file) => [file.id, file.originalName]));
@@ -1040,7 +1188,7 @@ async function enrichMonthlyReports(reports: MonthlyReportRecord[]): Promise<Mon
 async function enrichUploads(files: UploadedFileRecord[]): Promise<MonthlyUploadItem[]> {
   const centerIds = [...new Set(files.map((file) => file.centerId).filter((id): id is number => typeof id === "number"))];
   const centers = centerIds.length
-    ? ((await MongoCenter.find({ id: { $in: centerIds } }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<CenterRecord, "id" | "name">>)
+    ? ((await MongoCenter.find({ id: mongoIn(centerIds) }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<CenterRecord, "id" | "name">>)
     : [];
   const centerNames = new Map(centers.map((center) => [center.id, center.name]));
   return files.map((file) => ({ ...file, centerName: file.centerId ? centerNames.get(file.centerId) ?? null : null }));

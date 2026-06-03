@@ -247,6 +247,10 @@ async function main() {
   if (seededCenter && centerAccount) {
     await db.users.update(centerAccount.id, { centerId: seededCenter.id, role: "CENTER_MANAGER" });
   }
+  const demoUserAccount = await db.users.findByEmail("user@example.com");
+  if (seededCenter && demoUserAccount) {
+    await db.users.update(demoUserAccount.id, { centerId: seededCenter.id, role: "USER" });
+  }
 
   const existingChallenges = await db.challenges.list();
   const challengeTitles = new Set(existingChallenges.map((challenge) => challenge.title));

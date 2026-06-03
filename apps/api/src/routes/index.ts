@@ -44,13 +44,17 @@ router.patch("/challenges/:id", auth, requireAdmin, asyncHandler(challengesContr
 router.delete("/challenges/:id", auth, requireAdmin, asyncHandler(challengesController.delete));
 router.post("/challenges/:id/join", auth, asyncHandler(challengesController.join));
 
-router.get("/ideas", asyncHandler(ideasController.list));
+router.get("/ideas", optionalAuth, asyncHandler(ideasController.list));
 router.post("/ideas", auth, asyncHandler(ideasController.create));
 router.post("/ideas/:id/vote", auth, asyncHandler(ideasController.vote));
+router.patch("/ideas/:id/center-status", auth, asyncHandler(ideasController.updateCenterStatus));
+router.patch("/ideas/:id/visibility", auth, requireAdmin, asyncHandler(ideasController.updateVisibility));
 router.patch("/ideas/:id/status", auth, requireAdmin, asyncHandler(ideasController.updateStatus));
 
 router.get("/complaints", auth, asyncHandler(complaintsController.list));
 router.post("/complaints", auth, asyncHandler(complaintsController.create));
+router.patch("/complaints/:id/center-status", auth, asyncHandler(complaintsController.updateCenterStatus));
+router.patch("/complaints/:id/progress", auth, asyncHandler(complaintsController.updateProgress));
 router.patch("/complaints/:id/status", auth, requireAdmin, asyncHandler(complaintsController.updateStatus));
 
 router.get("/reports", auth, requireRole(...reportRoles), asyncHandler(reportsController.list));
