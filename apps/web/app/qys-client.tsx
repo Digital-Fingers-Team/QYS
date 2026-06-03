@@ -369,7 +369,6 @@ function UserDashboard({ token }: { token: string }) {
         <Stat title="أفكاري" value={data?.ideas || 0} />
         <Stat title="تحدياتي" value={data?.joinedChallenges || 0} />
         <Stat title="طلباتي" value={data?.complaints || 0} />
-        <Stat title="التصويتات" value={data?.totalVotes || 0} />
       </div>
       <div className="grid cards" style={{ marginTop: 16 }}>
         {(data?.suggestedChallenges || []).map((challenge: Challenge) => <ChallengeCard key={challenge.id} challenge={challenge} token={token} onDone={() => location.reload()} />)}
@@ -392,44 +391,19 @@ function Stat({ title, value }: { title: string; value: number | string }) {
 }
 
 function CentersPage({ token, admin }: { token: string; admin: boolean }) {
-  const [message, setMessage] = useState('');
-  const { items: centers, load, page, totalPages, setPage } = usePaginatedData<Center>('/centers', token, 24);
-
-  async function save(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    setMessage('');
-    try {
-      await api('/centers', { method: 'POST', body: JSON.stringify({ name: requiredText(form, 'name'), location: requiredText(form, 'location'), type: requiredText(form, 'type'), description: requiredText(form, 'description'), rating: num(form, 'rating') }) }, token);
-      form.reset();
-      load();
-    } catch (err) {
-      setMessage((err as Error).message);
-    }
-  }
+  const [selectedCenter, setSelectedCenter] = useState<Center | null>(null);
+  const { items: centers, page, totalPages, setPage } = usePaginatedData<Center>('/centers', token, 24);
 
   return (
     <>
       <Header title={admin ? 'إدارة المراكز' : 'المراكز الشبابية والرياضية'} subtitle="استكشف مراكز الشباب في محافظة القليوبية." />
-      {admin && <form className="panel form-grid" onSubmit={save} style={{ marginTop: 16 }}>
-        <input className="input" name="name" placeholder="اسم المركز" required />
-        <input className="input" name="location" placeholder="المنطقة" required />
-        <input className="input" name="type" placeholder="النوع" defaultValue="مركز شباب" required />
-        <input className="input" name="rating" placeholder="التقييم" type="number" step="0.1" />
-        <input className="input" name="description" placeholder="الوصف" required />
-        <button className="btn primary">إضافة</button>
-      </form>}
-      {message && <p className="error">{message}</p>}
       <div className="panel centers-directory" style={{ marginTop: 16 }}>
-        <div className="centers-directory-header">
-          <h3 className="centers-directory-title centers-directory-title-center">اسم المركز والمنطقة</h3>
-          <h3 className="centers-directory-title centers-directory-title-login">{admin ? 'بيانات الدخول (المدير)' : 'بيانات المركز'}</h3>
-        </div>
         <div className="centers-directory-list">
-          {centers.map((center) => <CenterDirectoryRow key={center.id} center={center} admin={admin} token={token} onDone={load} />)}
+          {centers.map((center) => <CenterDirectoryRow key={center.id} center={center} admin={admin} onSelect={() => setSelectedCenter(center)} />)}
         </div>
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
+      {selectedCenter && <CenterDetailsModal center={selectedCenter} admin={admin} onClose={() => setSelectedCenter(null)} />}
     </>
   );
 }
@@ -695,16 +669,22 @@ function LocationPin() {
   );
 }
 
-function CenterDirectoryRow({ center, admin, token, onDone }: { center: Center; admin: boolean; token: string; onDone: () => void }) {
+function CenterDirectoryRow({ center, admin, onSelect }: { center: Center; admin: boolean; onSelect: () => void }) {
   const credentials = centerManagerCredentials(center);
 
-  async function remove() {
-    await api(`/centers/${center.id}`, { method: 'DELETE' }, token);
-    onDone();
-  }
-
   return (
-    <article className="center-directory-row">
+    <article
+      className="center-directory-row"
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+    >
       <div className="center-directory-info">
         <div className="center-directory-image">
           {center.image ? <img src={center.image} alt="" /> : <span>{center.name.trim().charAt(0)}</span>}
@@ -725,7 +705,6 @@ function CenterDirectoryRow({ center, admin, token, onDone }: { center: Center; 
               <span>كلمة المرور:</span>
               <strong className="center-login-password">{credentials.password}</strong>
             </div>
-            <button className="btn danger center-delete-btn" type="button" onClick={remove}>حذف</button>
           </>
         ) : (
           <>
@@ -741,6 +720,51 @@ function CenterDirectoryRow({ center, admin, token, onDone }: { center: Center; 
         )}
       </div>
     </article>
+  );
+}
+
+function CenterDetailsModal({ center, admin, onClose }: { center: Center; admin: boolean; onClose: () => void }) {
+  const credentials = centerManagerCredentials(center);
+
+  return (
+    <div className="center-detail-backdrop" role="presentation" onClick={onClose}>
+      <section className="center-detail-modal" role="dialog" aria-modal="true" aria-labelledby="center-detail-title" onClick={(event) => event.stopPropagation()}>
+        <button className="center-detail-close" type="button" onClick={onClose} aria-label="إغلاق">×</button>
+        <div className="center-detail-hero">
+          <div className="center-detail-image">
+            {center.image ? <img src={center.image} alt="" /> : <span>{center.name.trim().charAt(0)}</span>}
+          </div>
+          <div>
+            <h2 id="center-detail-title">{center.name}</h2>
+            <p><span className="center-location-icon"><LocationPin /></span>{center.location}</p>
+          </div>
+        </div>
+        <div className="center-detail-grid">
+          <div>
+            <span>النوع</span>
+            <strong>{center.type}</strong>
+          </div>
+          <div>
+            <span>التقييم</span>
+            <strong>{center.rating || '-'}</strong>
+          </div>
+          {admin && <>
+            <div>
+              <span>بريد المدير</span>
+              <strong className="center-login-email">{credentials.email}</strong>
+            </div>
+            <div>
+              <span>كلمة المرور</span>
+              <strong className="center-login-password">{credentials.password}</strong>
+            </div>
+          </>}
+        </div>
+        <div className="center-detail-description">
+          <span>الوصف</span>
+          <p>{center.description}</p>
+        </div>
+      </section>
+    </div>
   );
 }
 

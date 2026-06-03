@@ -1137,15 +1137,11 @@ export const db = {
       });
     },
     async me(userId: number) {
-      const [user, ideas, joinedChallenges, complaints, voteGroups, suggestedChallenges, recentIdeas] = await Promise.all([
+      const [user, ideas, joinedChallenges, complaints, suggestedChallenges, recentIdeas] = await Promise.all([
         db.users.findById(userId),
         MongoIdea.countDocuments(ideaWhere({ userId, visibleToUsers: true })).exec(),
         MongoChallengeParticipation.countDocuments({ userId }).exec(),
         MongoComplaint.countDocuments(complaintWhere({ userId, visibleToUser: true })).exec(),
-        MongoIdea.aggregate<{ _id: null; votes: number }>([
-          { $match: { userId, $or: [{ visibleToUsers: true }, { visibleToUsers: { $exists: false } }] } },
-          { $group: { _id: null, votes: { $sum: "$votes" } } }
-        ]).exec(),
         db.challenges.listPage({ userId, page: 1, pageSize: 10 }),
         db.ideas.listPage({ userId, visibleToUsers: true, page: 1, pageSize: 3 })
       ]);
@@ -1154,7 +1150,6 @@ export const db = {
         ideas,
         joinedChallenges,
         complaints,
-        totalVotes: voteGroups[0]?.votes ?? 0,
         suggestedChallenges: suggestedChallenges.items.filter((challenge: ChallengeListItem) => !challenge.joined).slice(0, 3),
         recentIdeas: recentIdeas.items
       };
