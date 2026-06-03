@@ -214,6 +214,10 @@ function roleDescription(role: Role) {
   return 'عضو المنصة';
 }
 
+function hasUserPoints(role?: Role) {
+  return role === 'USER';
+}
+
 function Shell({ children, admin = false }: { children: React.ReactNode; admin?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -291,7 +295,7 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
             </button>
           </div>
           <div className="header-right">
-            {!canManageAccounts(user.role) && <div className="points-badge"><span>{user.points || 0}</span><span>نقطة</span></div>}
+            {hasUserPoints(user.role) && <div className="points-badge"><span>{user.points || 0}</span><span>نقطة</span></div>}
             <Link className="user-profile-header" href={settingsHref} title={t.settings}>
               <span className="user-avatar">{user.avatar ? <img src={user.avatar} alt="" /> : userInitial(user)}</span>
               <span className="user-info-text">
@@ -337,10 +341,10 @@ export function CenterPage({ section }: { section: 'reports' | 'ideas' | 'users'
     <Shell>
       {user.role !== 'CENTER_MANAGER' && <Header title="غير مصرح" subtitle="لا تملك صلاحية فتح هذه الصفحة." />}
       {user.role === 'CENTER_MANAGER' && section === 'reports' && <ReportsAdmin token={token} currentUser={user} />}
-      {user.role === 'CENTER_MANAGER' && section === 'ideas' && <IdeasPage token={token} admin={false} />}
+      {user.role === 'CENTER_MANAGER' && section === 'ideas' && <IdeasPage token={token} admin={false} viewOnly />}
       {user.role === 'CENTER_MANAGER' && section === 'users' && <CenterUsersPage token={token} />}
       {user.role === 'CENTER_MANAGER' && section === 'challenges' && <ChallengesPage token={token} admin={false} />}
-      {user.role === 'CENTER_MANAGER' && section === 'complaints' && <ComplaintsPage token={token} admin={false} />}
+      {user.role === 'CENTER_MANAGER' && section === 'complaints' && <ComplaintsPage token={token} admin={false} viewOnly />}
       {user.role === 'CENTER_MANAGER' && section === 'settings' && <SettingsPage token={token} user={user} setUser={setUser} logout={logout} />}
     </Shell>
   );
@@ -378,9 +382,8 @@ function Stat({ title, value }: { title: string; value: number | string }) {
 }
 
 function CentersPage({ token, admin }: { token: string; admin: boolean }) {
-  const [q, setQ] = useState('');
   const [message, setMessage] = useState('');
-  const { items: centers, load, page, totalPages, setPage } = usePaginatedData<Center>('/centers', token, 24, q);
+  const { items: centers, load, page, totalPages, setPage } = usePaginatedData<Center>('/centers', token, 24);
 
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -398,7 +401,6 @@ function CentersPage({ token, admin }: { token: string; admin: boolean }) {
   return (
     <>
       <Header title={admin ? 'إدارة المراكز' : 'المراكز الشبابية والرياضية'} subtitle="استكشف مراكز الشباب في محافظة القليوبية." />
-      <input className="input" placeholder="بحث بالمركز أو المنطقة" value={q} onChange={(e) => setQ(e.target.value)} />
       {admin && <form className="panel form-grid" onSubmit={save} style={{ marginTop: 16 }}>
         <input className="input" name="name" placeholder="اسم المركز" required />
         <input className="input" name="location" placeholder="المنطقة" required />
@@ -408,34 +410,89 @@ function CentersPage({ token, admin }: { token: string; admin: boolean }) {
         <button className="btn primary">إضافة</button>
       </form>}
       {message && <p className="error">{message}</p>}
-      <div className="grid cards" style={{ marginTop: 16 }}>
-        {centers.map((center) => <CenterCard key={center.id} center={center} admin={admin} token={token} onDone={load} />)}
+      <div className="panel centers-directory" style={{ marginTop: 16 }}>
+        <div className="centers-directory-header">
+          <h3 className="centers-directory-title centers-directory-title-center">اسم المركز والمنطقة</h3>
+          <h3 className="centers-directory-title centers-directory-title-login">{admin ? 'بيانات الدخول (المدير)' : 'بيانات المركز'}</h3>
+        </div>
+        <div className="centers-directory-list">
+          {centers.map((center) => <CenterDirectoryRow key={center.id} center={center} admin={admin} token={token} onDone={load} />)}
+        </div>
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
   );
 }
 
-function CenterCard({ center, admin, token, onDone }: { center: Center; admin: boolean; token: string; onDone: () => void }) {
+function centerManagerCredentials(center: Center) {
+  return {
+    email: `manager_${center.id}@platform.com`,
+    password: 'center123'
+  };
+}
+
+function LocationPin() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  );
+}
+
+function CenterDirectoryRow({ center, admin, token, onDone }: { center: Center; admin: boolean; token: string; onDone: () => void }) {
+  const credentials = centerManagerCredentials(center);
+
   async function remove() {
     await api(`/centers/${center.id}`, { method: 'DELETE' }, token);
     onDone();
   }
+
   return (
-    <article className="item-card">
-      {center.image && <img src={center.image} alt="" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, marginBottom: 10 }} />}
-      <h3>{center.name}</h3>
-      <p className="muted">{center.location} | {center.type}</p>
-      <p>{center.description}</p>
-      <span className="badge">تقييم {center.rating || '-'}</span>
-      {admin && <button className="btn danger" style={{ marginInlineStart: 8 }} onClick={remove}>حذف</button>}
+    <article className="center-directory-row">
+      <div className="center-directory-info">
+        <div className="center-directory-image">
+          {center.image ? <img src={center.image} alt="" /> : <span>{center.name.trim().charAt(0)}</span>}
+        </div>
+        <div className="center-directory-copy">
+          <h3>{center.name}</h3>
+          <p><span className="center-location-icon"><LocationPin /></span>{center.location}</p>
+        </div>
+      </div>
+      <div className="center-login-card">
+        {admin ? (
+          <>
+            <div className="center-login-line">
+              <span>البريد:</span>
+              <strong className="center-login-email">{credentials.email}</strong>
+            </div>
+            <div className="center-login-line">
+              <span>كلمة المرور:</span>
+              <strong className="center-login-password">{credentials.password}</strong>
+            </div>
+            <button className="btn danger center-delete-btn" type="button" onClick={remove}>حذف</button>
+          </>
+        ) : (
+          <>
+            <div className="center-login-line">
+              <span>النوع:</span>
+              <strong>{center.type}</strong>
+            </div>
+            <div className="center-login-line">
+              <span>التقييم:</span>
+              <strong>{center.rating || '-'}</strong>
+            </div>
+          </>
+        )}
+      </div>
     </article>
   );
 }
 
-function IdeasPage({ token, admin }: { token: string; admin: boolean }) {
+function IdeasPage({ token, admin, viewOnly = false }: { token: string; admin: boolean; viewOnly?: boolean }) {
   const { items: ideas, load, page, totalPages, setPage } = usePaginatedData<Idea>('/ideas', token, 20);
   const [message, setMessage] = useState('');
+  const readOnly = admin || viewOnly;
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -451,21 +508,21 @@ function IdeasPage({ token, admin }: { token: string; admin: boolean }) {
   return (
     <>
       <Header title={admin ? 'إدارة بنك الأفكار' : 'بنك الأفكار التطويرية'} subtitle="شارك واقرأ أفكار تطوير مراكز الشباب." />
-      {!admin && <form className="panel grid" onSubmit={create}>
+      {!readOnly && <form className="panel grid" onSubmit={create}>
         <input className="input" name="title" placeholder="عنوان الفكرة" required />
         <textarea className="textarea" name="description" placeholder="وصف الفكرة" required />
         <button className="btn primary">نشر الفكرة</button>
       </form>}
       {message && <p className="error">{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
-        {ideas.map((idea) => <IdeaCard key={idea.id} idea={idea} token={token} admin={admin} onDone={load} />)}
+        {ideas.map((idea) => <IdeaCard key={idea.id} idea={idea} token={token} readOnly={readOnly} onDone={load} />)}
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
   );
 }
 
-function IdeaCard({ idea, token, admin, onDone }: { idea: Idea; token: string; admin?: boolean; onDone?: () => void }) {
+function IdeaCard({ idea, token, readOnly, onDone }: { idea: Idea; token: string; readOnly?: boolean; onDone?: () => void }) {
   async function vote() {
     await api(`/ideas/${idea.id}/vote`, { method: 'POST' }, token);
     onDone?.();
@@ -475,7 +532,7 @@ function IdeaCard({ idea, token, admin, onDone }: { idea: Idea; token: string; a
       <h3>{idea.title}</h3>
       <p className="muted">{idea.user?.name || 'مستخدم'} | {idea.status}</p>
       <p>{idea.description}</p>
-      {!admin && <button className="btn" onClick={vote}>تصويت ({idea.votes})</button>}
+      {!readOnly && <button className="btn" onClick={vote}>تصويت ({idea.votes})</button>}
     </article>
   );
 }
@@ -536,9 +593,10 @@ function ChallengeCard({ challenge, token, admin, onDone }: { challenge: Challen
   );
 }
 
-function ComplaintsPage({ token, admin }: { token: string; admin: boolean }) {
+function ComplaintsPage({ token, admin, viewOnly = false }: { token: string; admin: boolean; viewOnly?: boolean }) {
   const { items: complaints, load, page, totalPages, setPage } = usePaginatedData<Complaint>('/complaints', token, 20);
   const [message, setMessage] = useState('');
+  const readOnly = admin || viewOnly;
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -554,7 +612,7 @@ function ComplaintsPage({ token, admin }: { token: string; admin: boolean }) {
   return (
     <>
       <Header title={admin ? 'إدارة الشكاوى' : 'الشكاوى والمقترحات'} subtitle="تابع الطلبات والتعامل معها." />
-      {!admin && <form className="panel grid" onSubmit={create}>
+      {!readOnly && <form className="panel grid" onSubmit={create}>
         <select className="select" name="type"><option>شكوى</option><option>مقترح</option><option>صيانة</option><option>أخرى</option></select>
         <input className="input" name="title" placeholder="العنوان" required />
         <textarea className="textarea" name="description" placeholder="التفاصيل" required />
@@ -613,8 +671,7 @@ function SettingsPage({ token, user, setUser, logout }: { token: string; user: U
     const form = e.currentTarget;
     setProfileMessage('');
     try {
-      const avatarUrl = field(form, 'avatar');
-      const avatar = avatarRemoved ? '' : avatarValue || avatarUrl;
+      const avatar = avatarRemoved ? '' : avatarValue;
       const updated = await api<User>('/auth/me', { method: 'PATCH', body: JSON.stringify({ name: requiredText(form, 'name'), email: field(form, 'email'), avatar, language: field(form, 'language'), theme: field(form, 'theme') }) }, token);
       setUser(updated);
       setAvatarValue(updated.avatar || '');
@@ -649,7 +706,6 @@ function SettingsPage({ token, user, setUser, logout }: { token: string; user: U
             {avatarValue && <button className="btn" type="button" onClick={() => { setAvatarValue(''); setAvatarRemoved(true); }}>Remove photo</button>}
           </div>
         </div>
-        <input className="input" name="avatar" defaultValue={user.avatar || ''} placeholder="رابط الصورة" />
         <select className="select" name="language" defaultValue={user.language}><option value="ar">العربية</option><option value="en">English</option></select>
         <select className="select" name="theme" defaultValue={user.theme}><option value="light">Light</option><option value="dark">Dark</option></select>
         <button className="btn primary">حفظ</button>
@@ -716,10 +772,12 @@ function AdminDashboard({ token }: { token: string }) {
 function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }) {
   const { items: users, load, page, totalPages, setPage } = usePaginatedData<User>('/users', token, 20);
   const { items: centers } = usePaginatedData<Center>('/centers', token, 100);
+  const allowedRoles = roleOptionsFor(currentUser.role);
   const [editing, setEditing] = useState<User | null>(null);
+  const [createRole, setCreateRole] = useState<Role>(allowedRoles[0]?.value || 'USER');
+  const [editingRole, setEditingRole] = useState<Role>('USER');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const allowedRoles = roleOptionsFor(currentUser.role);
 
   function centerIdFrom(form: HTMLFormElement) {
     const value = num(form, 'centerId');
@@ -743,20 +801,22 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
     e.preventDefault();
     const form = e.currentTarget;
     await run(async () => {
+      const role = field(form, 'role') as Role;
       await api('/users', {
         method: 'POST',
         body: JSON.stringify({
           name: field(form, 'name'),
           email: field(form, 'email'),
           password: field(form, 'password'),
-          role: field(form, 'role'),
+          role,
           centerId: centerIdFrom(form),
-          points: num(form, 'points') || 0,
+          points: hasUserPoints(role) ? num(form, 'points') || 0 : 0,
           status: 'ACTIVE',
           isActive: true
         })
       }, token);
       form.reset();
+      setCreateRole(allowedRoles[0]?.value || 'USER');
     });
   }
 
@@ -766,14 +826,15 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
     const form = e.currentTarget;
     await run(async () => {
       const isActive = new FormData(form).get('isActive') === 'on';
+      const role = field(form, 'role') as Role;
       await api(`/users/${editing.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           name: field(form, 'name'),
           email: field(form, 'email'),
-          role: field(form, 'role'),
+          role,
           centerId: centerIdFrom(form),
-          points: num(form, 'points') || 0,
+          points: hasUserPoints(role) ? num(form, 'points') || 0 : 0,
           status: isActive ? 'ACTIVE' : 'INACTIVE',
           isActive
         })
@@ -784,6 +845,11 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
       }
       setEditing(null);
     });
+  }
+
+  function beginEdit(user: User) {
+    setEditing(user);
+    setEditingRole(user.role);
   }
 
   async function toggleActive(user: User) {
@@ -806,8 +872,8 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
         <input className="input" name="name" placeholder="الاسم" required />
         <input className="input" name="email" type="email" placeholder="البريد" required />
         <input className="input" name="password" type="password" minLength={6} maxLength={128} placeholder="كلمة مرور مؤقتة (6 أحرف على الأقل)" required />
-        <input className="input" name="points" type="number" placeholder="النقاط" />
-        <select className="select" name="role">
+        {hasUserPoints(createRole) && <input className="input" name="points" type="number" placeholder="النقاط" />}
+        <select className="select" name="role" value={createRole} onChange={(e) => setCreateRole(e.target.value as Role)}>
           {allowedRoles.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
         <CenterSelect centers={centers} />
@@ -817,8 +883,8 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
       {editing && <form key={editing.id} className="panel form-grid" onSubmit={update} style={{ marginTop: 16 }}>
         <input className="input" name="name" defaultValue={editing.name} required />
         <input className="input" name="email" type="email" defaultValue={editing.email} required />
-        <input className="input" name="points" type="number" defaultValue={editing.points} />
-        <select className="select" name="role" defaultValue={editing.role}>
+        {hasUserPoints(editingRole) && <input className="input" name="points" type="number" defaultValue={editing.points} />}
+        <select className="select" name="role" value={editingRole} onChange={(e) => setEditingRole(e.target.value as Role)}>
           {allowedRoles.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
         <CenterSelect centers={centers} defaultValue={editing.centerId || ''} />
@@ -840,7 +906,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
               <td><span className="badge">{user.isActive ? 'نشط' : 'معطل'}</span></td>
               <td>
                 <div className="inline-actions">
-                  <button className="btn" onClick={() => setEditing(user)}>تعديل</button>
+                  <button className="btn" onClick={() => beginEdit(user)}>تعديل</button>
                   <button className={user.isActive ? 'btn danger' : 'btn'} onClick={() => toggleActive(user)}>{user.isActive ? 'تعطيل' : 'تفعيل'}</button>
                 </div>
               </td>

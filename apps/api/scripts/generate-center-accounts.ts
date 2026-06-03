@@ -38,13 +38,12 @@ function parseCenterAccounts(seedPath: string): CenterAccount[] {
 
   return rows.map((row, index) => {
     const [name, location] = row.split("|");
-    const accountNumber = String(index + 1).padStart(3, "0");
     return {
       number: index + 1,
       name,
       location,
-      email: `center-${accountNumber}@qys.local`,
-      password: `QysCenter-${accountNumber}!2026`,
+      email: `manager_${index + 1}@platform.com`,
+      password: "center123",
       role: "CENTER_MANAGER"
     };
   });

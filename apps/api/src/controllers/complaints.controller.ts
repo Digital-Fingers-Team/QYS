@@ -2,6 +2,7 @@ import { Response } from "express";
 import { complaintSchema, statusUpdateSchema } from "@qys/shared";
 import { isAdminRole } from "../auth/rbac";
 import { db } from "../db";
+import { ApiError } from "../errors/api-error";
 import { AuthedRequest } from "../middleware/auth";
 import { idParam, paginationFrom, wantsPaginated } from "./controller-utils";
 
@@ -12,6 +13,7 @@ export const complaintsController = {
     res.json(wantsPaginated(req) ? await db.complaints.listPage({ userId, page: query.page, pageSize: query.pageSize }) : await db.complaints.list(userId));
   },
   create: async (req: AuthedRequest, res: Response) => {
+    if (req.user?.role === "CENTER_MANAGER") throw new ApiError(403, "Center accounts cannot submit complaints.", "CENTER_COMPLAINTS_DISABLED");
     const complaint = await db.complaints.create(complaintSchema.parse(req.body), req.user!.userId);
     await db.activities.create(`Submitted complaint ${complaint.title}`, req.user!.userId);
     res.status(201).json(complaint);
