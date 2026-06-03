@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import type { MonthlyReportRow, MonthlyReportsSummary, Paginated } from '@qys/shared';
 import { api, apiForm, ApiClientError, downloadApi } from '../lib/api';
 import { field, num, useData, usePaginatedData } from './qys/data';
@@ -437,32 +437,41 @@ function CentersPage({ token, admin }: { token: string; admin: boolean }) {
 type CenterAreaGroup = {
   name: string;
   centers: Center[];
-  x: number;
-  y: number;
+  lat: number;
+  lng: number;
 };
 
-const centerMapPositions = [
-  { key: 'بنها', x: 53, y: 31 },
-  { key: 'كفر شكر', x: 66, y: 18 },
-  { key: 'شبين القناطر', x: 70, y: 61 },
-  { key: 'القناطر', x: 20, y: 62 },
-  { key: 'طوخ', x: 50, y: 48 },
-  { key: 'القليوبية', x: 55, y: 66 },
-  { key: 'قليوب', x: 34, y: 68 },
-  { key: 'شبرا', x: 28, y: 82 },
-  { key: 'الخانكة', x: 78, y: 72 },
-  { key: 'قها', x: 45, y: 57 },
-  { key: 'الخصوص', x: 41, y: 79 },
-  { key: 'العبور', x: 86, y: 83 }
+type CenterMapPoint = {
+  center: Center;
+  groupName: string;
+  lat: number;
+  lng: number;
+};
+
+const qalyubiaMapCenter: [number, number] = [30.3304, 31.2168];
+
+const centerAreaCoordinates = [
+  { key: 'شبين القناطر', lat: 30.3122, lng: 31.3208 },
+  { key: 'القناطر', lat: 30.1939, lng: 31.1369 },
+  { key: 'كفر شكر', lat: 30.5536, lng: 31.2646 },
+  { key: 'بنها', lat: 30.4668, lng: 31.1848 },
+  { key: 'طوخ', lat: 30.3539, lng: 31.2016 },
+  { key: 'القليوبية', lat: 30.3304, lng: 31.2168 },
+  { key: 'قليوب', lat: 30.1792, lng: 31.2056 },
+  { key: 'شبرا', lat: 30.1286, lng: 31.2422 },
+  { key: 'الخانكة', lat: 30.2098, lng: 31.3681 },
+  { key: 'قها', lat: 30.2817, lng: 31.2052 },
+  { key: 'الخصوص', lat: 30.1558, lng: 31.3144 },
+  { key: 'العبور', lat: 30.2288, lng: 31.4811 }
 ];
 
-function centerMapPosition(location: string, index: number, total: number) {
-  const known = centerMapPositions.find((position) => location.includes(position.key));
-  if (known) return { x: known.x, y: known.y };
+function centerAreaCoordinate(location: string, index: number, total: number) {
+  const known = centerAreaCoordinates.find((coordinate) => location.includes(coordinate.key));
+  if (known) return { lat: known.lat, lng: known.lng };
   const angle = (index / Math.max(1, total)) * Math.PI * 2 - Math.PI / 2;
   return {
-    x: 52 + Math.cos(angle) * 31,
-    y: 54 + Math.sin(angle) * 28
+    lat: qalyubiaMapCenter[0] + Math.sin(angle) * 0.18,
+    lng: qalyubiaMapCenter[1] + Math.cos(angle) * 0.24
   };
 }
 
@@ -476,8 +485,33 @@ function groupCentersForMap(centers: Center[]): CenterAreaGroup[] {
   return entries.map(([name, areaCenters], index) => ({
     name,
     centers: [...areaCenters].sort((a, b) => a.name.localeCompare(b.name, 'ar')),
-    ...centerMapPosition(name, index, entries.length)
+    ...centerAreaCoordinate(name, index, entries.length)
   }));
+}
+
+function centerMapPoints(groups: CenterAreaGroup[]): CenterMapPoint[] {
+  return groups.flatMap((group) => {
+    const radius = Math.min(0.035, Math.max(0.006, group.centers.length * 0.0011));
+    return group.centers.map((center, index) => {
+      const angle = index * 2.399963229728653;
+      const distance = radius * Math.sqrt((index + 1) / Math.max(1, group.centers.length));
+      return {
+        center,
+        groupName: group.name,
+        lat: group.lat + Math.sin(angle) * distance,
+        lng: group.lng + Math.cos(angle) * distance
+      };
+    });
+  });
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 async function loadAllCenters(token: string) {
@@ -491,12 +525,45 @@ async function loadAllCenters(token: string) {
 }
 
 function CentersMapPage({ token }: { token: string }) {
+  const mapElementRef = useRef<HTMLDivElement | null>(null);
+  const leafletMapRef = useRef<import('leaflet').Map | null>(null);
+  const markerLayerRef = useRef<import('leaflet').LayerGroup | null>(null);
   const [centers, setCenters] = useState<Center[]>([]);
   const [selectedArea, setSelectedArea] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const areaGroups = useMemo(() => groupCentersForMap(centers), [centers]);
+  const mapPoints = useMemo(() => centerMapPoints(areaGroups), [areaGroups]);
   const selectedGroup = areaGroups.find((group) => group.name === selectedArea) || areaGroups[0];
+
+  useEffect(() => {
+    let cancelled = false;
+    import('leaflet').then((L) => {
+      if (cancelled || !mapElementRef.current || leafletMapRef.current) return;
+      const map = L.map(mapElementRef.current, {
+        center: qalyubiaMapCenter,
+        zoom: 10,
+        minZoom: 9,
+        maxZoom: 18,
+        scrollWheelZoom: true
+      });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+      }).addTo(map);
+      const markerLayer = L.layerGroup().addTo(map);
+      leafletMapRef.current = map;
+      markerLayerRef.current = markerLayer;
+      window.setTimeout(() => map.invalidateSize(), 0);
+    });
+    return () => {
+      cancelled = true;
+      markerLayerRef.current?.remove();
+      leafletMapRef.current?.remove();
+      markerLayerRef.current = null;
+      leafletMapRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -527,6 +594,43 @@ function CentersMapPage({ token }: { token: string }) {
     }
   }, [areaGroups, selectedArea]);
 
+  useEffect(() => {
+    let active = true;
+    import('leaflet').then((L) => {
+      if (!active || !leafletMapRef.current || !markerLayerRef.current) return;
+      markerLayerRef.current.clearLayers();
+      const bounds: Array<[number, number]> = [];
+      mapPoints.forEach((point) => {
+        const marker = L.marker([point.lat, point.lng], {
+          icon: L.divIcon({
+            className: 'gps-marker-shell',
+            html: '<span class="gps-marker-dot"></span>',
+            iconSize: [22, 22],
+            iconAnchor: [11, 11]
+          }),
+          title: point.center.name
+        });
+        marker.bindPopup(
+          `<div class="gps-popup" dir="rtl"><strong>${escapeHtml(point.center.name)}</strong><span>${escapeHtml(point.center.location)}</span></div>`
+        );
+        marker.on('click', () => setSelectedArea(point.groupName));
+        marker.addTo(markerLayerRef.current!);
+        bounds.push([point.lat, point.lng]);
+      });
+      if (bounds.length) {
+        leafletMapRef.current.fitBounds(L.latLngBounds(bounds), { padding: [28, 28], maxZoom: 11 });
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [mapPoints]);
+
+  useEffect(() => {
+    if (!selectedGroup || !leafletMapRef.current) return;
+    leafletMapRef.current.setView([selectedGroup.lat, selectedGroup.lng], Math.max(12, leafletMapRef.current.getZoom()), { animate: true });
+  }, [selectedGroup?.name]);
+
   return (
     <>
       <Header title="خريطة المراكز" subtitle="عرض مراكز الشباب حسب مناطق محافظة القليوبية." />
@@ -538,27 +642,8 @@ function CentersMapPage({ token }: { token: string }) {
       {error && <p className="error">{error}</p>}
       <div className="centers-map-layout">
         <section className="panel centers-map-panel">
-          <div className="centers-map-canvas" aria-label="خريطة مراكز الشباب في القليوبية" dir="ltr">
-            <svg className="centers-map-art" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              <path className="map-region" d="M50 5 C64 8 76 17 83 31 C92 49 88 71 75 84 C62 98 39 96 25 85 C10 73 8 51 17 34 C25 18 36 8 50 5Z" />
-              <path className="map-water" d="M19 92 C28 78 31 64 29 49 C27 34 33 22 45 9" />
-              <path className="map-road" d="M16 67 C33 60 47 56 64 59 C73 61 82 65 90 73" />
-              <path className="map-road" d="M35 17 C43 32 52 43 67 50 C75 54 81 60 85 68" />
-            </svg>
+          <div className="centers-map-canvas" aria-label="خريطة مراكز الشباب في القليوبية" dir="ltr" ref={mapElementRef}>
             {loading && <div className="map-loading">جاري تحميل المراكز...</div>}
-            {areaGroups.map((group) => (
-              <button
-                key={group.name}
-                className={`map-marker ${selectedGroup?.name === group.name ? 'active' : ''}`}
-                style={{ left: `${group.x}%`, top: `${group.y}%` }}
-                type="button"
-                onClick={() => setSelectedArea(group.name)}
-                title={`${group.name} - ${group.centers.length}`}
-              >
-                <span className="map-marker-count">{group.centers.length}</span>
-                <span className="map-marker-label">{group.name}</span>
-              </button>
-            ))}
           </div>
         </section>
         <aside className="panel map-directory">

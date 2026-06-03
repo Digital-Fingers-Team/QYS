@@ -698,95 +698,62 @@ h6 {
 
 .centers-map-canvas {
   position: relative;
-  min-height: 560px;
+  min-height: 620px;
   overflow: hidden;
   isolation: isolate;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  background:
-    linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(37, 99, 235, 0.08)),
-    var(--bg-surface);
+  background: #dbeafe;
 }
 
-.centers-map-art {
-  position: absolute;
-  inset: 18px;
-  width: calc(100% - 36px);
-  height: calc(100% - 36px);
+.centers-map-canvas .leaflet-container {
+  font: inherit;
 }
 
-.map-region {
-  fill: rgba(16, 185, 129, 0.13);
-  stroke: rgba(16, 185, 129, 0.58);
-  stroke-width: 1.4;
+.centers-map-canvas .leaflet-control-attribution {
+  direction: ltr;
 }
 
-.map-water {
-  fill: none;
-  stroke: rgba(37, 99, 235, 0.65);
-  stroke-linecap: round;
-  stroke-width: 2.7;
-}
-
-.map-road {
-  fill: none;
-  stroke: rgba(245, 158, 11, 0.54);
-  stroke-dasharray: 2.5 3;
-  stroke-linecap: round;
-  stroke-width: 1.4;
-}
-
-.map-marker {
-  position: absolute;
-  z-index: 2;
-  display: grid;
-  gap: 5px;
-  justify-items: center;
+.gps-marker-shell {
   border: 0;
   background: transparent;
-  color: var(--text-main);
-  cursor: pointer;
-  transform: translate(-50%, -50%);
 }
 
-.map-marker-count {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border: 2px solid var(--bg-card);
+.gps-marker-dot {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  display: block;
+  border: 3px solid #fff;
   border-radius: 50%;
   background: var(--primary);
-  color: var(--text-on-primary);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.35);
+}
+
+.gps-marker-dot::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.36);
+}
+
+.gps-popup {
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+  color: #0f172a;
+  font-family: "Cairo", "Segoe UI", Tahoma, sans-serif;
+  text-align: start;
+}
+
+.gps-popup strong {
+  font-size: 0.92rem;
+}
+
+.gps-popup span {
+  color: #475569;
   font-size: 0.82rem;
-  font-weight: 800;
-}
-
-.map-marker-label {
-  max-width: 128px;
-  overflow: hidden;
-  padding: 3px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
-  color: var(--text-main);
-  direction: rtl;
-  font-size: 0.76rem;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.map-marker.active .map-marker-count {
-  background: var(--secondary);
-  transform: scale(1.13);
-}
-
-.map-marker.active .map-marker-label {
-  border-color: rgba(16, 185, 129, 0.45);
-  color: var(--secondary-dark);
 }
 
 .map-loading {
@@ -1380,15 +1347,6 @@ tr:hover td {
     min-height: 430px;
   }
 
-  .map-marker-label {
-    display: none;
-  }
-
-  .map-marker.active .map-marker-label {
-    display: block;
-    max-width: 118px;
-  }
-
   .page-header,
   .topbar {
     flex-direction: column;
@@ -1436,12 +1394,6 @@ tr:hover td {
 
   .centers-map-canvas {
     min-height: 360px;
-  }
-
-  .map-marker-count {
-    width: 30px;
-    height: 30px;
-    font-size: 0.76rem;
   }
 
   .map-area-list {
