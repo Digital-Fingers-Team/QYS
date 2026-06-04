@@ -6,6 +6,7 @@ import {
   challengesController,
   complaintsController,
   ideasController,
+  mediaController,
   reportsController,
   statsController,
   usersController
@@ -16,6 +17,7 @@ import { auth, optionalAuth, requireAdmin, requireRole } from "../middleware/aut
 import { asyncHandler } from "../middleware/async-handler";
 import { authRateLimit, uploadRateLimit } from "../middleware/security";
 import { excelUpload } from "../services/excel-upload.service";
+import { imageUpload } from "../services/image-upload.service";
 
 const router = Router();
 
@@ -24,6 +26,8 @@ router.post("/auth/login", authRateLimit, asyncHandler(authController.login));
 router.get("/auth/me", auth, asyncHandler(authController.me));
 router.patch("/auth/me", auth, asyncHandler(authController.updateMe));
 router.patch("/auth/password", auth, asyncHandler(authController.changePassword));
+
+router.post("/media/images", auth, uploadRateLimit, imageUpload.single("file"), asyncHandler(mediaController.uploadImage));
 
 router.get("/users", auth, requireRole(...managementRoles), asyncHandler(usersController.list));
 router.post("/users", auth, requireRole(...managementRoles), asyncHandler(usersController.create));

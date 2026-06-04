@@ -64,7 +64,7 @@ export function rejectUnexpectedBody(req: Request, _res: Response, next: NextFun
   if (req.method === "GET" || req.method === "DELETE") {
     return next(new ApiError(400, "Unexpected request body.", "UNEXPECTED_REQUEST_BODY"));
   }
-  if (req.method === "POST" && (/^\/api\/challenges\/\d+\/join$/.test(req.path) || /^\/api\/ideas\/\d+\/vote$/.test(req.path))) {
+  if (req.method === "POST" && /^\/api\/ideas\/\d+\/vote$/.test(req.path)) {
     return next(new ApiError(400, "Unexpected request body.", "UNEXPECTED_REQUEST_BODY"));
   }
   return next();

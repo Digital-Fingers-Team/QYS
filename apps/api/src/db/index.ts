@@ -3,6 +3,7 @@ import type {
   CenterInput,
   CenterUpdateInput,
   ChallengeInput,
+  ChallengeJoinInput,
   ChallengeUpdateInput,
   ComplaintInput,
   IdeaInput,
@@ -68,6 +69,7 @@ export interface ChallengeRecord {
   id: number;
   title: string;
   description: string;
+  image?: string | null;
   reward: number;
   status: string;
   category: string;
@@ -81,6 +83,11 @@ export interface ChallengeParticipationRecord {
   id: number;
   userId: number;
   challengeId: number;
+  participantName: string;
+  phone: string;
+  age: number;
+  notes?: string | null;
+  image?: string | null;
   joinedAt: Date;
   completed: boolean;
   pointsEarned: number;
@@ -210,7 +217,7 @@ type CreateUploadedFileInput = Omit<UploadedFileRecord, "id" | "uploadedAt"> & {
 type CreateUploadHistoryInput = Omit<UploadHistoryRecord, "id" | "createdAt"> & { createdAt?: Date };
 type ChallengeListItem = ChallengeRecord & { _count: { participations: number }; joined?: boolean };
 type IdeaListItem = IdeaRecord & { user: { name: string } };
-type ComplaintListItem = ComplaintRecord & { user: { name: string } };
+type ComplaintListItem = ComplaintRecord & { user: { name: string }; center?: { name: string; location: string } | null };
 type PageFilter = Pick<PaginationQueryInput, "page" | "pageSize">;
 type ListFilter = { q?: string; page?: number; pageSize?: number };
 type IdeaListFilter = ListFilter & { userId?: number; centerId?: number; statuses?: string[]; includeUserId?: number; visibleToUsers?: boolean };
@@ -267,6 +274,7 @@ const mongoChallengeSchema = new Schema<ChallengeRecord>(
     id: { type: Number, required: true, unique: true },
     title: { type: String, required: true },
     description: { type: String, required: true },
+    image: { type: String },
     reward: { type: Number, required: true },
     status: { type: String, default: "ACTIVE", required: true },
     category: { type: String, required: true },
@@ -284,6 +292,11 @@ const mongoChallengeParticipationSchema = new Schema<ChallengeParticipationRecor
     id: { type: Number, required: true, unique: true },
     userId: { type: Number, required: true },
     challengeId: { type: Number, required: true },
+    participantName: { type: String, required: true },
+    phone: { type: String, required: true },
+    age: { type: Number, required: true },
+    notes: { type: String },
+    image: { type: String },
     joinedAt: { type: Date, default: () => new Date(), required: true },
     completed: { type: Boolean, default: false, required: true },
     pointsEarned: { type: Number, default: 0, required: true }
@@ -537,6 +550,30 @@ function complaintWhere(filter?: ComplaintListFilter): Record<string, unknown> {
   if (and.length === 0) return {};
   if (and.length === 1) return and[0];
   return { $and: and };
+}
+
+async function enrichComplaints(complaints: ComplaintRecord[]): Promise<ComplaintListItem[]> {
+  if (!complaints.length) return [];
+  const userIds = [...new Set(complaints.map((complaint) => complaint.userId))];
+  const centerIds = [...new Set(complaints.map((complaint) => complaint.centerId).filter((id): id is number => typeof id === "number"))];
+  const [users, centers] = await Promise.all([
+    userIds.length
+      ? MongoUser.find({ id: mongoIn(userIds) }, { _id: 0, id: 1, name: 1 }).lean().exec()
+      : [],
+    centerIds.length
+      ? MongoCenter.find({ id: mongoIn(centerIds) }, { _id: 0, id: 1, name: 1, location: 1 }).lean().exec()
+      : []
+  ]);
+  const names = new Map((users as Array<Pick<UserRecord, "id" | "name">>).map((user) => [user.id, user.name]));
+  const centersById = new Map((centers as Array<Pick<CenterRecord, "id" | "name" | "location">>).map((center) => [center.id, center]));
+  return complaints.map((complaint) => {
+    const center = complaint.centerId ? centersById.get(complaint.centerId) : null;
+    return {
+      ...complaint,
+      user: { name: names.get(complaint.userId) ?? "Unknown" },
+      center: center ? { name: center.name, location: center.location } : null
+    };
+  });
 }
 
 function notDeleted() {
@@ -803,13 +840,13 @@ export const db = {
       await Promise.all([MongoChallenge.deleteOne({ id }).exec(), MongoChallengeParticipation.deleteMany({ challengeId: id }).exec()]);
       cache.invalidate("stats");
     },
-    async join(challengeId: number, userId: number): Promise<ChallengeParticipationRecord> {
+    async join(challengeId: number, userId: number, data: ChallengeJoinInput): Promise<ChallengeParticipationRecord> {
       await ensureMongoConnected();
       const challenge = await db.challenges.get(challengeId);
       if (!challenge) throw new ApiError(404, "Challenge not found", "CHALLENGE_NOT_FOUND");
       if (challenge.maxParticipants && challenge._count.participations >= challenge.maxParticipants) throw new ApiError(409, "Challenge is full", "CHALLENGE_FULL");
       try {
-        const participation = await MongoChallengeParticipation.create({ id: await nextId("challenge_participations"), challengeId, userId });
+        const participation = await MongoChallengeParticipation.create(clean({ id: await nextId("challenge_participations"), challengeId, userId, ...data }));
         await MongoChallenge.updateOne({ id: challengeId }, { $inc: { participants: 1 } }).exec();
         cache.invalidate("stats");
         return participation.toObject() as unknown as ChallengeParticipationRecord;
@@ -848,7 +885,7 @@ export const db = {
     },
     async create(data: IdeaInput, userId: number, centerId?: number | null): Promise<IdeaRecord> {
       await ensureMongoConnected();
-      const idea = await MongoIdea.create({ ...data, userId, centerId: centerId ?? undefined, status: "PENDING", visibleToUsers: true, id: await nextId("ideas") });
+      const idea = await MongoIdea.create({ ...data, userId, centerId: centerId ?? undefined, status: "PENDING", visibleToUsers: false, id: await nextId("ideas") });
       cache.invalidate("stats");
       return idea.toObject() as unknown as IdeaRecord;
     },
@@ -865,7 +902,7 @@ export const db = {
     },
     async updateStatus(id: number, status: string): Promise<IdeaRecord> {
       await ensureMongoConnected();
-      const idea = (await MongoIdea.findOneAndUpdate({ id }, { $set: { status } }, { new: true, projection: { _id: 0 } }).lean().exec()) as IdeaRecord | null;
+      const idea = (await MongoIdea.findOneAndUpdate({ id }, { $set: { status, visibleToUsers: ["ACTIVE", "RESOLVED"].includes(status) } }, { new: true, projection: { _id: 0 } }).lean().exec()) as IdeaRecord | null;
       if (!idea) throw new ApiError(404, "Idea not found", "IDEA_NOT_FOUND");
       cache.invalidate("stats");
       return idea;
@@ -880,7 +917,7 @@ export const db = {
     async updateStatusForCenter(id: number, centerId: number, status: string): Promise<IdeaRecord> {
       await ensureMongoConnected();
       if (!["ACTIVE", "REJECTED"].includes(status)) throw new ApiError(400, "Center review can only publish or reject ideas.", "INVALID_CENTER_IDEA_STATUS");
-      const idea = (await MongoIdea.findOneAndUpdate({ id, centerId, status: "PENDING" }, { $set: { status } }, { new: true, projection: { _id: 0 } }).lean().exec()) as IdeaRecord | null;
+      const idea = (await MongoIdea.findOneAndUpdate({ id, centerId, status: "PENDING" }, { $set: { status, visibleToUsers: status === "ACTIVE" } }, { new: true, projection: { _id: 0 } }).lean().exec()) as IdeaRecord | null;
       if (!idea) throw new ApiError(404, "Idea not found for this center or already reviewed", "CENTER_IDEA_NOT_FOUND");
       cache.invalidate("stats");
       return idea;
@@ -891,10 +928,7 @@ export const db = {
     async list(filter?: ComplaintListFilter): Promise<ComplaintListItem[]> {
       await ensureMongoConnected();
       const complaints = (await MongoComplaint.find(complaintWhere(filter), { _id: 0 }).sort({ createdAt: -1 }).lean().exec()) as ComplaintRecord[];
-      const userIds = [...new Set(complaints.map((complaint) => complaint.userId))];
-      const users = (await MongoUser.find({ id: mongoIn(userIds) }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>;
-      const names = new Map(users.map((user) => [user.id, user.name]));
-      return complaints.map((complaint) => ({ ...complaint, user: { name: names.get(complaint.userId) ?? "Unknown" } }));
+      return enrichComplaints(complaints);
     },
     async listPage(filter?: ComplaintListFilter): Promise<Paginated<ComplaintListItem>> {
       await ensureMongoConnected();
@@ -904,12 +938,7 @@ export const db = {
         MongoComplaint.find(where, { _id: 0 }).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean().exec(),
         MongoComplaint.countDocuments(where).exec()
       ]);
-      const userIds = [...new Set((complaints as ComplaintRecord[]).map((complaint) => complaint.userId))];
-      const users = userIds.length
-        ? ((await MongoUser.find({ id: mongoIn(userIds) }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>)
-        : [];
-      const names = new Map(users.map((user) => [user.id, user.name]));
-      const items = (complaints as ComplaintRecord[]).map((complaint) => ({ ...complaint, user: { name: names.get(complaint.userId) ?? "Unknown" } }));
+      const items = await enrichComplaints(complaints as ComplaintRecord[]);
       return paginated(items, total, page, pageSize);
     },
     async create(data: ComplaintInput, userId: number, centerId?: number | null): Promise<ComplaintRecord> {
@@ -1182,11 +1211,11 @@ export const db = {
     async me(userId: number) {
       const [user, ideas, joinedChallenges, complaints, suggestedChallenges, recentIdeas] = await Promise.all([
         db.users.findById(userId),
-        MongoIdea.countDocuments(ideaWhere({ userId, visibleToUsers: true })).exec(),
+        MongoIdea.countDocuments(ideaWhere({ userId, statuses: ["ACTIVE", "RESOLVED"], visibleToUsers: true })).exec(),
         MongoChallengeParticipation.countDocuments({ userId }).exec(),
         MongoComplaint.countDocuments(complaintWhere({ userId, visibleToUser: true })).exec(),
         db.challenges.listPage({ userId, page: 1, pageSize: 10 }),
-        db.ideas.listPage({ userId, visibleToUsers: true, page: 1, pageSize: 3 })
+        db.ideas.listPage({ userId, statuses: ["ACTIVE", "RESOLVED"], visibleToUsers: true, page: 1, pageSize: 3 })
       ]);
       return {
         user,

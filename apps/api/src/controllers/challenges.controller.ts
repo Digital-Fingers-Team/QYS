@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { challengeSchema, challengeUpdateSchema } from "@qys/shared";
+import { challengeJoinSchema, challengeSchema, challengeUpdateSchema } from "@qys/shared";
 import { db } from "../db";
 import { AuthedRequest } from "../middleware/auth";
 import { idParam, paginationFrom, wantsPaginated } from "./controller-utils";
@@ -30,7 +30,7 @@ export const challengesController = {
     res.status(204).send();
   },
   join: async (req: AuthedRequest, res: Response) => {
-    const participation = await db.challenges.join(idParam(req), req.user!.userId);
+    const participation = await db.challenges.join(idParam(req), req.user!.userId, challengeJoinSchema.parse(req.body));
     await db.activities.create(`Joined challenge #${idParam(req)}`, req.user!.userId);
     res.status(201).json(participation);
   }

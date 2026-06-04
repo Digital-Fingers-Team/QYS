@@ -27,7 +27,7 @@ const optionalUrl = z
   .optional();
 
 const avatarImage = optionalUrl
-  .or(z.string().max(1_100_000).regex(/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/, "Use a PNG, JPEG, WebP, or GIF image."))
+  .or(z.string().regex(/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/, "Use a PNG, JPEG, WebP, or GIF image."))
   .or(z.literal(""))
   .optional();
 
@@ -81,6 +81,7 @@ export const centerUpdateSchema = centerSchema.partial();
 export const challengeSchema = z.object({
   title: text(2, 160),
   description: text(2, 2000),
+  image: avatarImage,
   reward: z.number().int().nonnegative(),
   status: WorkflowStatusSchema.default("ACTIVE"),
   category: text(2, 80),
@@ -89,6 +90,13 @@ export const challengeSchema = z.object({
   deadline: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
 }).strict();
 export const challengeUpdateSchema = challengeSchema.partial();
+export const challengeJoinSchema = z.object({
+  participantName: text(2, 120),
+  phone: text(5, 30),
+  age: z.number().int().min(6).max(100),
+  notes: text(0, 1000).optional(),
+  image: avatarImage
+}).strict();
 
 export const ideaSchema = z.object({ title: text(2, 160), description: text(2, 2000) }).strict();
 export const complaintSchema = z.object({ title: text(2, 160), description: text(2, 2000), type: text(2, 80) }).strict();
@@ -189,6 +197,7 @@ export type CenterInput = z.infer<typeof centerSchema>;
 export type CenterUpdateInput = z.infer<typeof centerUpdateSchema>;
 export type ChallengeInput = z.infer<typeof challengeSchema>;
 export type ChallengeUpdateInput = z.infer<typeof challengeUpdateSchema>;
+export type ChallengeJoinInput = z.infer<typeof challengeJoinSchema>;
 export type IdeaInput = z.infer<typeof ideaSchema>;
 export type ComplaintInput = z.infer<typeof complaintSchema>;
 export type StatusUpdateInput = z.infer<typeof statusUpdateSchema>;

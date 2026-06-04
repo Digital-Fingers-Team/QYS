@@ -69,21 +69,14 @@ function requiredText(form: HTMLFormElement, name: string, min = 2) {
   return value;
 }
 
-const avatarUploadLimitBytes = 750 * 1024;
-
-function readAvatarFile(file: File) {
+async function uploadImageFile(file: File, token: string) {
   if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
-    throw new Error('Profile photo must be PNG, JPEG, WebP, or GIF.');
+    throw new Error('Image must be PNG, JPEG, WebP, or GIF.');
   }
-  if (file.size > avatarUploadLimitBytes) {
-    throw new Error('Profile photo must be 750 KB or smaller.');
-  }
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Could not read profile photo.'));
-    reader.readAsDataURL(file);
-  });
+  const data = new FormData();
+  data.append('file', file);
+  const result = await apiForm<{ url: string }>('/media/images', data, token);
+  return result.url;
 }
 
 function CenterSelect({ centers, defaultValue = '', required = false }: { centers: Center[]; defaultValue?: number | string | null; required?: boolean }) {
@@ -887,13 +880,30 @@ function IdeaCard({ idea, token, readOnly, admin, centerApproval, onDone }: { id
 function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
   const { items: challenges, load, page, totalPages, setPage } = usePaginatedData<Challenge>('/challenges', token, 20);
   const [message, setMessage] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [createImageName, setCreateImageName] = useState('');
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
     setMessage('');
     try {
-      await api('/challenges', { method: 'POST', body: JSON.stringify({ title: requiredText(form, 'title'), description: requiredText(form, 'description'), reward: num(form, 'reward') || 0, category: requiredText(form, 'category'), deadline: field(form, 'deadline'), status: 'ACTIVE' }) }, token);
+      const imageFile = new FormData(form).get('image') as File | null;
+      const image = imageFile && imageFile.size > 0 ? await uploadImageFile(imageFile, token) : undefined;
+      await api('/challenges', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: requiredText(form, 'title'),
+          description: requiredText(form, 'description'),
+          image,
+          reward: num(form, 'reward') || 0,
+          category: requiredText(form, 'category'),
+          deadline: field(form, 'deadline'),
+          status: 'ACTIVE'
+        })
+      }, token);
       form.reset();
+      setCreateImageName('');
+      setShowCreate(false);
       load();
     } catch (err) {
       setMessage((err as Error).message);
@@ -902,14 +912,57 @@ function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
   return (
     <>
       <Header title={admin ? 'إدارة التحديات' : 'التحديات الرياضية والشبابية'} subtitle="شارك في التحديات واجمع النقاط." />
-      {admin && <form className="panel form-grid" onSubmit={create}>
-        <input className="input" name="title" placeholder="عنوان التحدي" required />
-        <input className="input" name="description" placeholder="الوصف" required />
-        <input className="input" name="reward" type="number" placeholder="النقاط" required />
-        <input className="input" name="category" placeholder="الفئة" required />
-        <input className="input" name="deadline" type="date" required />
-        <button className="btn primary">إضافة</button>
-      </form>}
+      {admin && <div className="inline-actions" style={{ marginTop: 0 }}>
+        <button className="btn primary" type="button" onClick={() => setShowCreate((value) => !value)}>{showCreate ? 'إغلاق إضافة تحدي' : 'إضافة تحدي'}</button>
+      </div>}
+      {admin && showCreate && <div className="challenge-create-backdrop" role="presentation" onClick={() => setShowCreate(false)}>
+        <section className="challenge-create-modal" role="dialog" aria-modal="true" aria-labelledby="challenge-create-title" onClick={(event) => event.stopPropagation()}>
+          <div className="challenge-create-header">
+            <div>
+              <h2 id="challenge-create-title">إضافة تحدي</h2>
+              <p className="muted">اكتب بيانات التحدي والصورة ثم انشره للمستخدمين.</p>
+            </div>
+            <button className="challenge-create-close" type="button" onClick={() => setShowCreate(false)} aria-label="إغلاق">×</button>
+          </div>
+          <form className="challenge-create-form" onSubmit={create}>
+            <label className="form-group challenge-create-wide">
+              عنوان التحدي
+              <input className="input" name="title" placeholder="مثال: تحدي اللياقة" required />
+            </label>
+            <label className="form-group">
+              الفئة
+              <input className="input" name="category" placeholder="رياضي، ثقافي..." required />
+            </label>
+            <label className="form-group">
+              النقاط
+              <input className="input" name="reward" type="number" min="0" placeholder="عدد النقاط" required />
+            </label>
+            <label className="form-group">
+              الموعد النهائي
+              <input className="input" name="deadline" type="date" required />
+            </label>
+            <label className="form-group challenge-create-wide">
+              الوصف
+              <textarea className="textarea" name="description" placeholder="اكتب وصف التحدي وشروط المشاركة" required />
+            </label>
+            <label className="form-group challenge-create-wide">
+              صورة التحدي
+              <span className="challenge-image-picker">
+                <span className="challenge-image-picker-mark" aria-hidden>+</span>
+                <span>
+                  <strong>{createImageName || 'اختر صورة للتحدي'}</strong>
+                  <small>PNG أو JPEG أو WebP أو GIF بدون حد حجم من التطبيق</small>
+                </span>
+                <input name="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => setCreateImageName(event.currentTarget.files?.[0]?.name || '')} />
+              </span>
+            </label>
+            <div className="challenge-create-actions">
+              <button className="btn primary" type="submit">إضافة التحدي</button>
+              <button className="btn btn-outline" type="button" onClick={() => { setShowCreate(false); setCreateImageName(''); }}>إلغاء</button>
+            </div>
+          </form>
+        </section>
+      </div>}
       {message && <p className="error">{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
         {challenges.map((challenge) => <ChallengeCard key={challenge.id} challenge={challenge} token={token} admin={admin} onDone={load} />)}
@@ -919,10 +972,42 @@ function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
   );
 }
 
+function challengeDisplayStatus(status: string) {
+  return status === 'ACTIVE' ? 'ACTIVE' : 'Soon';
+}
+
 function ChallengeCard({ challenge, token, admin, onDone }: { challenge: Challenge; token: string; admin?: boolean; onDone: () => void }) {
-  async function join() {
-    await api(`/challenges/${challenge.id}/join`, { method: 'POST' }, token);
-    onDone();
+  const [showJoin, setShowJoin] = useState(false);
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function join(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    setMessage('');
+    setBusy(true);
+    try {
+      const age = num(form, 'age');
+      const imageFile = new FormData(form).get('image') as File | null;
+      const image = imageFile && imageFile.size > 0 ? await uploadImageFile(imageFile, token) : undefined;
+      if (!age) throw new Error('يجب إدخال السن.');
+      await api(`/challenges/${challenge.id}/join`, {
+        method: 'POST',
+        body: JSON.stringify({
+          participantName: requiredText(form, 'participantName'),
+          phone: requiredText(form, 'phone', 5),
+          age,
+          notes: field(form, 'notes') || undefined,
+          image
+        })
+      }, token);
+      form.reset();
+      setShowJoin(false);
+      onDone();
+    } catch (err) {
+      setMessage((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
   async function remove() {
     await api(`/challenges/${challenge.id}`, { method: 'DELETE' }, token);
@@ -930,11 +1015,43 @@ function ChallengeCard({ challenge, token, admin, onDone }: { challenge: Challen
   }
   return (
     <article className="item-card">
+      {challenge.image && <div className="challenge-card-image"><img src={challenge.image} alt="" /></div>}
       <h3>{challenge.title}</h3>
-      <p className="muted">{challenge.category} | {challenge.status}</p>
+      <span className={`badge challenge-status ${challenge.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}`}>{challengeDisplayStatus(challenge.status)}</span>
+      <p className="muted">{challenge.category}</p>
       <p>{challenge.description}</p>
       <p><strong>{challenge.reward}</strong> نقطة | المشاركون {challenge._count?.participations ?? challenge.participants}</p>
-      {!admin && <button className="btn primary" disabled={challenge.joined} onClick={join}>{challenge.joined ? 'تم الانضمام' : 'انضم الآن'}</button>}
+      {!admin && challenge.joined && <button className="btn primary" disabled>تم الانضمام</button>}
+      {!admin && !challenge.joined && !showJoin && <button className="btn primary" type="button" onClick={() => setShowJoin(true)}>انضم الآن</button>}
+      {!admin && !challenge.joined && showJoin && <form className="challenge-join-form" onSubmit={join}>
+        <div className="challenge-join-fields">
+          <label className="form-group">
+            الاسم
+            <input className="input" name="participantName" placeholder="اسم المشارك" required />
+          </label>
+          <label className="form-group">
+            رقم الهاتف
+            <input className="input" name="phone" placeholder="رقم الهاتف" required />
+          </label>
+          <label className="form-group">
+            السن
+            <input className="input" name="age" type="number" min="6" max="100" placeholder="السن" required />
+          </label>
+          <label className="form-group">
+            صورة
+            <input className="input" name="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+          </label>
+          <label className="form-group challenge-join-wide">
+            ملاحظات
+            <textarea className="textarea" name="notes" placeholder="ملاحظات اختيارية" />
+          </label>
+        </div>
+        <div className="challenge-join-actions">
+          <button className="btn primary" type="submit" disabled={busy}>{busy ? 'جاري الإرسال...' : 'إرسال الانضمام'}</button>
+          <button className="btn btn-outline" type="button" disabled={busy} onClick={() => { setShowJoin(false); setMessage(''); }}>إلغاء</button>
+        </div>
+      </form>}
+      {message && <p className="error">{message}</p>}
       {admin && <button className="btn danger" onClick={remove}>حذف</button>}
     </article>
   );
@@ -1001,10 +1118,13 @@ function ComplaintCard({ complaint, token, admin, centerApproval, onDone }: { co
   const canManage = admin || centerApproval;
   const canReview = canManage && complaint.centerReviewStatus === 'PENDING';
   const canUpdateProgress = canManage && (complaint.centerReviewStatus === 'APPROVED' || !complaint.centerReviewStatus);
+  const centerName = complaint.center?.name || 'غير محدد';
+  const centerArea = complaint.center?.location || 'غير محددة';
   return (
     <article className="item-card">
       <h3>{complaint.title}</h3>
       <p className="muted">{complaint.user?.name || 'مستخدم'} | {complaint.type}</p>
+      <p className="muted complaint-center-meta">المركز: {centerName} | المنطقة: {centerArea}</p>
       <p>{complaint.description}</p>
       <span className="badge">{complaintReviewLabel(complaint)}</span>
       {canReview && <div className="inline-actions" style={{ marginTop: 10 }}>
@@ -1036,7 +1156,7 @@ function SettingsPage({ token, user, setUser, logout }: { token: string; user: U
     if (!file) return;
     setProfileMessage('');
     try {
-      setAvatarValue(await readAvatarFile(file));
+      setAvatarValue(await uploadImageFile(file, token));
       setAvatarRemoved(false);
     } catch (err) {
       setProfileMessage((err as Error).message);

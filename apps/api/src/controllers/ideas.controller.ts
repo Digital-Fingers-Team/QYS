@@ -18,7 +18,7 @@ export const ideasController = {
         ? { centerId: req.user.centerId ?? -1 }
         : req.user && isAdminRole(req.user.role)
           ? {}
-          : { statuses: publishedIdeaStatuses, visibleToUsers: true, ...(req.user?.userId ? { includeUserId: req.user.userId } : {}) };
+          : { statuses: publishedIdeaStatuses, visibleToUsers: true };
     res.json(wantsPaginated(req) ? await db.ideas.listPage({ ...filter, page: query.page, pageSize: query.pageSize }) : await db.ideas.list(filter));
   },
   create: async (req: AuthedRequest, res: Response) => {

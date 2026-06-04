@@ -18,7 +18,7 @@ const envSchema = z
     FRONTEND_URL: z.string().url().optional(),
     RAILWAY_PUBLIC_DOMAIN: z.string().optional(),
     EXCEL_MAX_UPLOAD_MB: z.coerce.number().int().positive().max(10).default(5),
-    JSON_BODY_LIMIT: z.string().default("100kb"),
+    JSON_BODY_LIMIT: z.string().default("2mb"),
     TRUST_PROXY: z.coerce.boolean().default(false)
   })
   .transform((value) => {

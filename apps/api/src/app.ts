@@ -5,6 +5,7 @@ import { errorHandler } from "./middleware/error";
 import { globalRateLimit, rejectMongoOperators, rejectUnexpectedBody, rejectUnexpectedQuery, securityHeaders } from "./middleware/security";
 import { ApiError } from "./errors/api-error";
 import { env } from "./config/env";
+import { uploadsRoot } from "./services/image-upload.service";
 const app = express();
 
 const configuredOrigins = env.CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean);
@@ -29,6 +30,7 @@ app.use(cors({
     callback(null, isAllowedOrigin(origin));
   }
 }));
+app.use("/uploads", express.static(uploadsRoot, { index: false, fallthrough: false }));
 app.use(express.json({ limit: env.JSON_BODY_LIMIT, strict: true }));
 app.use(rejectMongoOperators);
 app.use(rejectUnexpectedBody);

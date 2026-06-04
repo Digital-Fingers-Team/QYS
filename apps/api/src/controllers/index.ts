@@ -4,6 +4,7 @@ export { centersController } from "./centers.controller";
 export { challengesController } from "./challenges.controller";
 export { complaintsController } from "./complaints.controller";
 export { ideasController } from "./ideas.controller";
+export { mediaController } from "./media.controller";
 export { reportsController } from "./reports.controller";
 export { statsController } from "./stats.controller";
 export { usersController } from "./users.controller";

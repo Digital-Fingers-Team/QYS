@@ -482,6 +482,207 @@ h6 {
   padding: 18px;
 }
 
+.challenge-card-image {
+  height: 148px;
+  margin: -6px -6px 14px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.challenge-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.challenge-create-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(3px);
+}
+
+.challenge-create-modal {
+  position: relative;
+  width: min(70vw, 920px);
+  max-width: calc(100vw - 48px);
+  min-height: min(560px, 70vh);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: 0 28px 80px -36px rgba(15, 23, 42, 0.72);
+}
+
+.challenge-create-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--border-color);
+  background: linear-gradient(180deg, var(--bg-card), var(--bg-surface));
+}
+
+.challenge-create-header h2 {
+  margin-bottom: 5px;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.challenge-create-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-content: start;
+  overflow: auto;
+  padding: 22px 24px 24px;
+}
+
+.challenge-create-wide {
+  grid-column: 1 / -1;
+}
+
+.challenge-create-form .textarea {
+  min-height: 132px;
+}
+
+.challenge-create-close {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: var(--bg-card);
+  color: var(--text-main);
+  cursor: pointer;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.challenge-create-close:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-surface);
+}
+
+.challenge-image-picker {
+  position: relative;
+  min-height: 84px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px dashed var(--border-hover);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.challenge-image-picker:hover,
+.challenge-image-picker:focus-within {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.challenge-image-picker input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.challenge-image-picker-mark {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.challenge-image-picker strong,
+.challenge-image-picker small {
+  display: block;
+}
+
+.challenge-image-picker strong {
+  overflow-wrap: anywhere;
+}
+
+.challenge-image-picker small {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.challenge-create-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-start;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.challenge-status {
+  margin: 0 0 10px;
+}
+
+.complaint-center-meta {
+  margin-top: -7px;
+}
+
+.challenge-join-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.challenge-join-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.challenge-join-wide {
+  grid-column: 1 / -1;
+}
+
+.challenge-join-form .textarea {
+  min-height: 86px;
+}
+
+.challenge-join-form input[type="file"] {
+  padding: 8px 10px;
+}
+
+.challenge-join-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .item-card h3 {
   margin-bottom: 8px;
 }
@@ -1588,6 +1789,37 @@ tr:hover td {
   }
 
   .map-area-list {
+    grid-template-columns: 1fr;
+  }
+
+  .challenge-create-backdrop {
+    padding: 14px;
+  }
+
+  .challenge-create-modal {
+    width: 100%;
+    min-height: auto;
+    max-height: calc(100vh - 28px);
+  }
+
+  .challenge-create-header {
+    padding: 18px;
+  }
+
+  .challenge-create-form {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+
+  .challenge-create-actions {
+    flex-direction: column;
+  }
+
+  .challenge-create-actions .btn {
+    width: 100%;
+  }
+
+  .challenge-join-fields {
     grid-template-columns: 1fr;
   }
 
