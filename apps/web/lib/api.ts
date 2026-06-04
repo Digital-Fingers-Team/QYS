@@ -43,13 +43,14 @@ function safeDownloadName(name: string) {
 }
 
 export async function api<T>(path: string, init?: RequestInit, token?: string): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (init?.body != null && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+
   const res = await fetch(apiPath(path), {
+    cache: 'no-store',
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers || {})
-    }
+    headers
   });
 
   if (!res.ok) {
@@ -80,4 +81,3 @@ export async function downloadApi(path: string, token?: string) {
   const match = disposition.match(/filename="([^"]+)"/);
   return { blob, filename: safeDownloadName(match?.[1] || 'download.xlsx') };
 }
- 

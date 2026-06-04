@@ -363,7 +363,6 @@ function UserDashboard({ token }: { token: string }) {
       <div className="grid stats">
         <Stat title="أفكاري" value={data?.ideas || 0} />
         <Stat title="تحدياتي" value={data?.joinedChallenges || 0} />
-        <Stat title="طلباتي" value={data?.complaints || 0} />
       </div>
       <div className="grid cards" style={{ marginTop: 16 }}>
         {suggestedChallenges.map((challenge: Challenge) => <ChallengeCard key={challenge.id} challenge={challenge} token={token} onDone={() => location.reload()} />)}
@@ -619,15 +618,14 @@ function CentersMapPage({ token }: { token: string }) {
   return (
     <>
       <Header title="خريطة المراكز" subtitle="عرض مراكز الشباب حسب مناطق محافظة القليوبية." />
-      <div className="grid stats">
-        <Stat title="المراكز على الخريطة" value={loading ? '...' : centers.length} />
-        <Stat title="المناطق" value={areaGroups.length} />
-        <Stat title="المراكز في المنطقة" value={selectedGroup?.centers.length || 0} />
-      </div>
       {error && <p className="error">{error}</p>}
       <div className="centers-map-layout">
         <section className="panel centers-map-panel">
           <div className="centers-map-canvas" aria-label="خريطة مراكز الشباب في القليوبية" dir="ltr" ref={mapElementRef}>
+            <div className="map-centers-counter" dir="rtl">
+              <span>{loading ? '...' : centers.length}</span>
+              <strong>عدد المراكز</strong>
+            </div>
             {loading && <div className="map-loading">جاري تحميل المراكز...</div>}
           </div>
         </section>
@@ -859,9 +857,32 @@ function IdeasPage({ token, admin, viewOnly = false, centerApproval = false }: {
 }
 
 function IdeaCard({ idea, token, readOnly, admin, centerApproval, onDone }: { idea: Idea; token: string; readOnly?: boolean; admin?: boolean; centerApproval?: boolean; onDone?: () => void }) {
+  const [voteCount, setVoteCount] = useState(idea.votes);
+  const [voteMessage, setVoteMessage] = useState('');
+  const [isVoting, setIsVoting] = useState(false);
+
+  useEffect(() => {
+    setVoteCount(idea.votes);
+    setVoteMessage('');
+    setIsVoting(false);
+  }, [idea.id, idea.votes]);
+
   async function vote() {
-    await api(`/ideas/${idea.id}/vote`, { method: 'POST' }, token);
-    onDone?.();
+    if (isVoting) return;
+    const previousVoteCount = voteCount;
+    setIsVoting(true);
+    setVoteMessage('');
+    setVoteCount((count) => count + 1);
+    try {
+      const updated = await api<Idea>(`/ideas/${idea.id}/vote`, { method: 'POST' }, token);
+      setVoteCount(updated.votes);
+      onDone?.();
+    } catch (err) {
+      setVoteCount(previousVoteCount);
+      setVoteMessage((err as Error).message);
+    } finally {
+      setIsVoting(false);
+    }
   }
   async function toggleVisibility() {
     await api(`/ideas/${idea.id}/visibility`, { method: 'PATCH', body: JSON.stringify({ visibleToUsers: idea.visibleToUsers === false }) }, token);
@@ -879,7 +900,8 @@ function IdeaCard({ idea, token, readOnly, admin, centerApproval, onDone }: { id
       <h3>{idea.title}</h3>
       <p className="muted">{idea.user?.name || 'مستخدم'} | {ideaStatusLabel(idea.status)}{admin ? ` | ${visibleToUsers ? 'ظاهرة للمستخدمين' : 'مخفية عن المستخدمين'}` : ''}</p>
       <p>{idea.description}</p>
-      {canVote && <button className="btn" onClick={vote}>تصويت ({idea.votes})</button>}
+      {canVote && <button className="btn" type="button" disabled={isVoting} onClick={vote}>{isVoting ? 'جار التصويت...' : `تصويت (${voteCount})`}</button>}
+      {voteMessage && <p className="error">{voteMessage}</p>}
       {admin && <button className={visibleToUsers ? 'btn danger' : 'btn primary'} type="button" onClick={toggleVisibility}>
         {visibleToUsers ? 'إخفاء عن المستخدمين' : 'إظهار للمستخدمين'}
       </button>}
@@ -896,13 +918,37 @@ function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
   const [message, setMessage] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [createImageName, setCreateImageName] = useState('');
+  const [challengeAreaScope, setChallengeAreaScope] = useState<'all' | 'custom'>('all');
+  const [challengeAreas, setChallengeAreas] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!admin || !showCreate) return;
+    let active = true;
+    loadAllCenters(token)
+      .then((centers) => {
+        if (!active) return;
+        setChallengeAreas(groupCentersForMap(centers).map((group) => group.name));
+      })
+      .catch((err) => {
+        if (active) setMessage((err as Error).message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [admin, showCreate, token]);
+
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
     setMessage('');
     try {
-      const imageFile = new FormData(form).get('image') as File | null;
+      const formData = new FormData(form);
+      const imageFile = formData.get('image') as File | null;
       const image = imageFile && imageFile.size > 0 ? await uploadImageFile(imageFile, token) : undefined;
+      const targetAreas = challengeAreaScope === 'all'
+        ? []
+        : formData.getAll('targetAreas').map(String).filter(Boolean);
+      if (challengeAreaScope === 'custom' && targetAreas.length === 0) throw new Error('اختار منطقة واحدة على الأقل.');
       await api('/challenges', {
         method: 'POST',
         body: JSON.stringify({
@@ -911,12 +957,15 @@ function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
           image,
           reward: num(form, 'reward') || 0,
           category: requiredText(form, 'category'),
+          location: requiredText(form, 'location'),
+          targetAreas,
           deadline: field(form, 'deadline'),
           status: 'ACTIVE'
         })
       }, token);
       form.reset();
       setCreateImageName('');
+      setChallengeAreaScope('all');
       setShowCreate(false);
       load();
     } catch (err) {
@@ -948,6 +997,10 @@ function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
               <input className="input" name="category" placeholder="رياضي، ثقافي..." required />
             </label>
             <label className="form-group">
+              المكان
+              <input className="input" name="location" placeholder="مثال: مركز شباب بنها" required />
+            </label>
+            <label className="form-group">
               النقاط
               <input className="input" name="reward" type="number" min="0" placeholder="عدد النقاط" required />
             </label>
@@ -959,6 +1012,28 @@ function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
               الوصف
               <textarea className="textarea" name="description" placeholder="اكتب وصف التحدي وشروط المشاركة" required />
             </label>
+            <fieldset className="form-group challenge-area-picker challenge-create-wide">
+              <legend>المناطق المستهدفة</legend>
+              <div className="challenge-area-modes">
+                <label className="check-row">
+                  <input type="radio" name="areaScope" value="all" checked={challengeAreaScope === 'all'} onChange={() => setChallengeAreaScope('all')} />
+                  كل المناطق
+                </label>
+                <label className="check-row">
+                  <input type="radio" name="areaScope" value="custom" checked={challengeAreaScope === 'custom'} onChange={() => setChallengeAreaScope('custom')} />
+                  مناطق محددة
+                </label>
+              </div>
+              {challengeAreaScope === 'custom' && <div className="challenge-area-options">
+                {challengeAreas.map((area) => (
+                  <label className="check-row" key={area}>
+                    <input type="checkbox" name="targetAreas" value={area} />
+                    {area}
+                  </label>
+                ))}
+                {challengeAreas.length === 0 && <p className="muted">جاري تحميل المناطق...</p>}
+              </div>}
+            </fieldset>
             <label className="form-group challenge-create-wide">
               صورة التحدي
               <span className="challenge-image-picker">
@@ -995,6 +1070,7 @@ function ChallengeCard({ challenge, token, admin, onDone }: { challenge: Challen
   const [showJoin, setShowJoin] = useState(false);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const targetAreasText = challenge.targetAreas?.length ? challenge.targetAreas.join('، ') : 'كل المناطق';
   async function join(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -1034,6 +1110,8 @@ function ChallengeCard({ challenge, token, admin, onDone }: { challenge: Challen
       <h3>{challenge.title}</h3>
       <span className={`badge challenge-status ${challenge.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}`}>{challengeDisplayStatus(challenge.status)}</span>
       <p className="muted">{challenge.category}</p>
+      {challenge.location && <p className="muted">المكان: {challenge.location}</p>}
+      <p className="muted">النطاق: {targetAreasText}</p>
       <p>{challenge.description}</p>
       <p><strong>{challenge.reward}</strong> نقطة | المشاركون {challenge._count?.participations ?? challenge.participants}</p>
       {!admin && challenge.joined && <button className="btn primary" disabled>تم الانضمام</button>}
@@ -1086,10 +1164,24 @@ function complaintReviewLabel(complaint: Complaint) {
   return complaintStatusLabel(complaint.status);
 }
 
+function isRejectedComplaint(complaint: Complaint) {
+  return complaint.centerReviewStatus === 'REJECTED' || complaint.status === 'REJECTED';
+}
+
+function rejectedComplaintDaysLeft(complaint: Complaint) {
+  if (!complaint.rejectedAt) return 7;
+  const rejectedAt = new Date(complaint.rejectedAt).getTime();
+  if (Number.isNaN(rejectedAt)) return 7;
+  return Math.max(1, 7 - Math.floor((Date.now() - rejectedAt) / (24 * 60 * 60 * 1000)));
+}
+
 function ComplaintsPage({ token, admin, viewOnly = false, centerApproval = false }: { token: string; admin: boolean; viewOnly?: boolean; centerApproval?: boolean }) {
   const { items: complaints, load, page, totalPages, setPage } = usePaginatedData<Complaint>('/complaints', token, 20);
   const [message, setMessage] = useState('');
   const readOnly = admin || viewOnly || centerApproval;
+  const splitRejected = !admin && !centerApproval;
+  const rejectedComplaints = splitRejected ? complaints.filter(isRejectedComplaint) : [];
+  const activeComplaints = splitRejected ? complaints.filter((complaint) => !isRejectedComplaint(complaint)) : complaints;
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -1107,22 +1199,41 @@ function ComplaintsPage({ token, admin, viewOnly = false, centerApproval = false
     <>
       <Header title={admin ? 'إدارة الشكاوى' : 'الشكاوى والمقترحات'} subtitle="تابع الطلبات والتعامل معها." />
       {!readOnly && <form className="panel grid" onSubmit={create}>
-        <select className="select" name="type"><option>شكوى</option><option>مقترح</option><option>صيانة</option><option>أخرى</option></select>
+        <select className="select" name="type"><option>شكوى</option><option>مقترح</option></select>
         <input className="input" name="title" placeholder="العنوان" required />
         <textarea className="textarea" name="description" placeholder="التفاصيل" required />
         <button className="btn primary">إرسال للمراجعة</button>
       </form>}
       {message && <p className={message.startsWith('تم ') ? 'muted' : 'error'}>{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
-        {complaints.map((complaint) => <ComplaintCard key={complaint.id} complaint={complaint} token={token} admin={admin} centerApproval={centerApproval} onDone={load} />)}
-        {complaints.length === 0 && <EmptyState title="لا توجد شكاوى للعرض" detail={readOnly ? 'ستظهر الطلبات عند وصولها أو اعتمادها.' : 'يمكنك إرسال شكوى أو مقترح من النموذج بالأعلى.'} />}
+        {activeComplaints.map((complaint) => <ComplaintCard key={complaint.id} complaint={complaint} token={token} admin={admin} centerApproval={centerApproval} onDone={load} />)}
+        {activeComplaints.length === 0 && <EmptyState title="لا توجد شكاوى للعرض" detail={readOnly ? 'ستظهر الطلبات عند وصولها أو اعتمادها.' : 'يمكنك إرسال شكوى أو مقترح من النموذج بالأعلى.'} />}
       </div>
+      {rejectedComplaints.length > 0 && <section className="panel rejected-complaints-panel">
+        <div className="rejected-complaints-header">
+          <h3>الطلبات المرفوضة</h3>
+          <p className="muted">تظهر هنا لمدة أسبوع من تاريخ الرفض ثم تختفي تلقائياً.</p>
+        </div>
+        <div className="grid cards">
+          {rejectedComplaints.map((complaint) => (
+            <ComplaintCard
+              key={complaint.id}
+              complaint={complaint}
+              token={token}
+              admin={admin}
+              centerApproval={centerApproval}
+              onDone={load}
+              rejectedNote={`سيختفي خلال ${rejectedComplaintDaysLeft(complaint)} يوم`}
+            />
+          ))}
+        </div>
+      </section>}
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
   );
 }
 
-function ComplaintCard({ complaint, token, admin, centerApproval, onDone }: { complaint: Complaint; token: string; admin: boolean; centerApproval?: boolean; onDone: () => void }) {
+function ComplaintCard({ complaint, token, admin, centerApproval, onDone, rejectedNote }: { complaint: Complaint; token: string; admin: boolean; centerApproval?: boolean; onDone: () => void; rejectedNote?: string }) {
   async function progress(data: { status?: string; showProgress?: boolean }) {
     await api(`/complaints/${complaint.id}/progress`, { method: 'PATCH', body: JSON.stringify(data) }, token);
     onDone();
@@ -1143,6 +1254,7 @@ function ComplaintCard({ complaint, token, admin, centerApproval, onDone }: { co
       <p className="muted complaint-center-meta">المركز: {centerName} | المنطقة: {centerArea}</p>
       <p>{complaint.description}</p>
       <span className="badge">{complaintReviewLabel(complaint)}</span>
+      {rejectedNote && <p className="muted rejected-complaint-note">{rejectedNote}</p>}
       {canReview && <div className="inline-actions" style={{ marginTop: 10 }}>
         <button className="btn primary" type="button" onClick={() => review('ACTIVE')}>قبول وبدء المعالجة</button>
         <button className="btn danger" type="button" onClick={() => review('REJECTED')}>رفض</button>
@@ -1210,7 +1322,7 @@ function SettingsPage({ token, user, setUser, logout }: { token: string; user: U
   return (
     <>
       <Header title="الإعدادات" subtitle="تخصيص الملف الشخصي والمظهر." />
-      <form className="panel grid" onSubmit={save}>
+      <form className="panel grid settings-profile-form" onSubmit={save}>
         <input className="input" name="name" defaultValue={user.name} minLength={2} required />
         <input className="input" name="email" type="email" defaultValue={user.email} required />
         <div className="settings-avatar-row">

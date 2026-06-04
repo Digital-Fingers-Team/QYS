@@ -85,6 +85,8 @@ export const challengeSchema = z.object({
   reward: z.number().int().nonnegative(),
   status: WorkflowStatusSchema.default("ACTIVE"),
   category: text(2, 80),
+  location: text(2, 160).optional(),
+  targetAreas: z.array(text(2, 160)).max(100).default([]),
   participants: z.number().int().nonnegative().optional(),
   maxParticipants: z.number().int().positive().optional(),
   deadline: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))

@@ -58,13 +58,17 @@ export function rejectUnexpectedQuery(req: Request, _res: Response, next: NextFu
   return next(new ApiError(400, "Unexpected query parameter.", "UNEXPECTED_QUERY_PARAMETER"));
 }
 
+function isIdeaVotePath(path: string) {
+  return /^\/(?:api\/)?ideas\/\d+\/vote$/.test(path);
+}
+
 export function rejectUnexpectedBody(req: Request, _res: Response, next: NextFunction) {
   const hasBody = Boolean(req.body && typeof req.body === "object" && Object.keys(req.body).length);
   if (!hasBody) return next();
   if (req.method === "GET" || req.method === "DELETE") {
     return next(new ApiError(400, "Unexpected request body.", "UNEXPECTED_REQUEST_BODY"));
   }
-  if (req.method === "POST" && /^\/api\/ideas\/\d+\/vote$/.test(req.path)) {
+  if (req.method === "POST" && isIdeaVotePath(req.path)) {
     return next(new ApiError(400, "Unexpected request body.", "UNEXPECTED_REQUEST_BODY"));
   }
   return next();

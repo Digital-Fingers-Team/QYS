@@ -73,6 +73,8 @@ export interface ChallengeRecord {
   reward: number;
   status: string;
   category: string;
+  location?: string | null;
+  targetAreas?: string[];
   participants: number;
   maxParticipants?: number | null;
   deadline: Date;
@@ -112,6 +114,7 @@ export interface ComplaintRecord {
   centerReviewStatus?: string | null;
   showProgress?: boolean;
   resolvedAt?: Date | null;
+  rejectedAt?: Date | null;
   title: string;
   description: string;
   status: string;
@@ -278,6 +281,8 @@ const mongoChallengeSchema = new Schema<ChallengeRecord>(
     reward: { type: Number, required: true },
     status: { type: String, default: "ACTIVE", required: true },
     category: { type: String, required: true },
+    location: { type: String },
+    targetAreas: { type: [String], default: [] },
     participants: { type: Number, default: 0, required: true },
     maxParticipants: { type: Number },
     deadline: { type: Date, required: true },
@@ -332,6 +337,7 @@ const mongoComplaintSchema = new Schema<ComplaintRecord>(
     centerReviewStatus: { type: String, default: "PENDING", required: true },
     showProgress: { type: Boolean, default: false, required: true },
     resolvedAt: { type: Date },
+    rejectedAt: { type: Date },
     title: { type: String, required: true },
     description: { type: String, required: true },
     status: { type: String, default: "PENDING", required: true },
@@ -540,12 +546,22 @@ function complaintWhere(filter?: ComplaintListFilter): Record<string, unknown> {
     and.push({ centerReviewStatus: filter.centerReviewStatus });
   }
   if (filter?.visibleToUser) {
-    const solvedCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    and.push(
-      { showProgress: true },
-      { $or: [{ centerReviewStatus: "APPROVED" }, { centerReviewStatus: mongoExists(false) }] },
-      { $or: [{ status: mongoose.trusted({ $ne: "RESOLVED" }) }, { resolvedAt: mongoose.trusted({ $gte: solvedCutoff }) }] }
-    );
+    const visibilityCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    and.push({
+      $or: [
+        {
+          showProgress: true,
+          $or: [{ centerReviewStatus: "APPROVED" }, { centerReviewStatus: mongoExists(false) }],
+          $and: [
+            { $or: [{ status: mongoose.trusted({ $nin: ["RESOLVED", "REJECTED"] }) }, { resolvedAt: mongoose.trusted({ $gte: visibilityCutoff }) }] }
+          ]
+        },
+        {
+          $or: [{ centerReviewStatus: "REJECTED" }, { status: "REJECTED" }],
+          rejectedAt: mongoose.trusted({ $gte: visibilityCutoff })
+        }
+      ]
+    });
   }
   if (and.length === 0) return {};
   if (and.length === 1) return and[0];
@@ -956,7 +972,11 @@ export const db = {
     },
     async updateStatus(id: number, status: string): Promise<ComplaintRecord> {
       await ensureMongoConnected();
-      const update = status === "RESOLVED" ? { $set: { status, resolvedAt: new Date() } } : { $set: { status }, $unset: { resolvedAt: "" } };
+      const update = status === "RESOLVED"
+        ? { $set: { status, resolvedAt: new Date() }, $unset: { rejectedAt: "" } }
+        : status === "REJECTED"
+          ? { $set: { status, rejectedAt: new Date() }, $unset: { resolvedAt: "" } }
+          : { $set: { status }, $unset: { resolvedAt: "", rejectedAt: "" } };
       const complaint = (await MongoComplaint.findOneAndUpdate({ id }, update, { new: true, projection: { _id: 0 } }).lean().exec()) as ComplaintRecord | null;
       if (!complaint) throw new ApiError(404, "Complaint not found", "COMPLAINT_NOT_FOUND");
       cache.invalidate("stats");
@@ -967,8 +987,8 @@ export const db = {
       const centerReviewStatus = status === "ACTIVE" || status === "APPROVED" ? "APPROVED" : status;
       if (!["APPROVED", "REJECTED"].includes(centerReviewStatus)) throw new ApiError(400, "Center review can only approve or reject complaints.", "INVALID_CENTER_COMPLAINT_STATUS");
       const update = centerReviewStatus === "APPROVED"
-        ? { $set: { centerReviewStatus, status: "PENDING", showProgress: true }, $unset: { resolvedAt: "" } }
-        : { $set: { centerReviewStatus, showProgress: false }, $unset: { resolvedAt: "" } };
+        ? { $set: { centerReviewStatus, status: "PENDING", showProgress: true }, $unset: { resolvedAt: "", rejectedAt: "" } }
+        : { $set: { centerReviewStatus, showProgress: false, rejectedAt: new Date() }, $unset: { resolvedAt: "" } };
       const complaint = (await MongoComplaint.findOneAndUpdate(
         { id, centerId, centerReviewStatus: "PENDING" },
         update,
@@ -983,8 +1003,8 @@ export const db = {
       const centerReviewStatus = status === "ACTIVE" || status === "APPROVED" ? "APPROVED" : status;
       if (!["APPROVED", "REJECTED"].includes(centerReviewStatus)) throw new ApiError(400, "Review can only approve or reject complaints.", "INVALID_COMPLAINT_REVIEW_STATUS");
       const update = centerReviewStatus === "APPROVED"
-        ? { $set: { centerReviewStatus, status: "PENDING", showProgress: true }, $unset: { resolvedAt: "" } }
-        : { $set: { centerReviewStatus, showProgress: false }, $unset: { resolvedAt: "" } };
+        ? { $set: { centerReviewStatus, status: "PENDING", showProgress: true }, $unset: { resolvedAt: "", rejectedAt: "" } }
+        : { $set: { centerReviewStatus, showProgress: false, rejectedAt: new Date() }, $unset: { resolvedAt: "" } };
       const complaint = (await MongoComplaint.findOneAndUpdate({ id }, update, { new: true, projection: { _id: 0 } }).lean().exec()) as ComplaintRecord | null;
       if (!complaint) throw new ApiError(404, "Complaint not found", "COMPLAINT_NOT_FOUND");
       cache.invalidate("stats");
@@ -997,9 +1017,11 @@ export const db = {
         showProgress: data.showProgress
       }) as Record<string, unknown>;
       const update = data.status === "RESOLVED"
-        ? { $set: { ...set, resolvedAt: new Date() } }
+        ? { $set: { ...set, resolvedAt: new Date() }, $unset: { rejectedAt: "" } }
+        : data.status === "REJECTED"
+          ? { $set: { ...set, rejectedAt: new Date() }, $unset: { resolvedAt: "" } }
         : data.status
-          ? { $set: set, $unset: { resolvedAt: "" } }
+          ? { $set: set, $unset: { resolvedAt: "", rejectedAt: "" } }
           : { $set: set };
       const where = clean({ id, centerId: centerId ?? undefined }) as Record<string, unknown>;
       const complaint = (await MongoComplaint.findOneAndUpdate(where, update, { new: true, projection: { _id: 0 } }).lean().exec()) as ComplaintRecord | null;
