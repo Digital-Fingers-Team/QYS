@@ -361,7 +361,8 @@ async function main() {
         points: 0,
         status: "ACTIVE",
         isActive: true,
-        passwordHash
+        passwordHash,
+        managedPassword: account.password
       });
     } else {
       await db.users.create({
@@ -372,7 +373,8 @@ async function main() {
         points: 0,
         status: "ACTIVE",
         isActive: true,
-        passwordHash
+        passwordHash,
+        managedPassword: account.password
       });
     }
   }

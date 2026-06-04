@@ -7,10 +7,6 @@ import { AuthedRequest } from "../middleware/auth";
 import { parseMonthlyReportExcel } from "./excel-parser.service";
 import { sanitizeOriginalFilename, safeStoredFilename, fileHash, validateExcelFile } from "./excel-upload.service";
 
-function normalizeText(value: string) {
-  return value.replace(/\s+/g, " ").trim().toLocaleLowerCase("ar-EG");
-}
-
 function canManageAll(req: AuthedRequest) {
   return Boolean(req.user && adminRoles.includes(req.user.role));
 }
@@ -70,12 +66,6 @@ export async function uploadMonthlyReport(req: AuthedRequest) {
     throw error;
   }
 
-  if (normalizeText(parsed.centerName) !== normalizeText(targetCenter.name)) {
-    const message = "اسم المركز داخل الملف لا يطابق المركز المختار في النظام.";
-    await markRejected(file, userId, message, targetCenter.id, parsed.month);
-    throw new ApiError(400, message, "CENTER_NAME_MISMATCH");
-  }
-
   const existing = await db.monthlyReports.findByCenterMonth(targetCenter.id, parsed.month);
   if (existing && !body.replace) {
     const upload = await db.uploadedFiles.create({
@@ -102,6 +92,7 @@ export async function uploadMonthlyReport(req: AuthedRequest) {
   });
   const payload = {
     centerId: targetCenter.id,
+    eventName: parsed.eventName,
     month: parsed.month,
     revenues: parsed.revenues,
     expenses: parsed.expenses,
@@ -126,6 +117,7 @@ export async function uploadMonthlyReport(req: AuthedRequest) {
       id: report.id,
       centerId: report.centerId,
       centerName: targetCenter.name,
+      eventName: report.eventName,
       month: report.month,
       revenues: report.revenues,
       expenses: report.expenses,

@@ -19,6 +19,8 @@ export type User = {
 };
 
 export type Center = { id: number; name: string; location: string; rating?: number; type: string; image?: string; description: string };
+export type CenterMetrics = { centerId: number; usersCount: number; eventsCount: number };
+export type CenterCredentials = { email: string; password: string };
 export type Challenge = { id: number; title: string; description: string; reward: number; status: string; category: string; participants: number; deadline: string; joined?: boolean; _count?: { participations: number } };
 export type Idea = { id: number; userId: number; centerId?: number | null; visibleToUsers?: boolean; title: string; description: string; status: string; votes: number; createdAt: string; user?: { name: string } };
 export type Complaint = { id: number; userId: number; centerId?: number | null; centerReviewStatus?: string | null; showProgress?: boolean; resolvedAt?: string | null; title: string; description: string; type: string; status: string; createdAt: string; user?: { name: string } };

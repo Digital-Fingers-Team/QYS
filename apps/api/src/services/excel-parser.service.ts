@@ -1,13 +1,13 @@
 import ExcelJS from "exceljs";
 import { ApiError } from "../errors/api-error";
 
-const requiredHeaders = ["center_name", "month", "revenues", "expenses", "seminars_count"] as const;
+const requiredHeaders = ["event_name", "month", "revenues", "expenses", "seminars_count"] as const;
 type RequiredHeader = (typeof requiredHeaders)[number];
 const maxRows = 20;
 const maxColumns = requiredHeaders.length;
 
 export type ParsedMonthlyReport = {
-  centerName: string;
+  eventName: string;
   month: string;
   revenues: number;
   expenses: number;
@@ -87,9 +87,9 @@ export async function parseMonthlyReportExcel(buffer: Buffer): Promise<ParsedMon
 
   const rowValues = readRow(dataRows[0]);
   const value = (header: RequiredHeader) => rowValues[headers.indexOf(header)];
-  const centerName = cellText(value("center_name"));
+  const eventName = cellText(value("event_name"));
   const month = cellText(value("month"));
-  if (!centerName) throw new ApiError(400, "center_name is required.", "MISSING_VALUE");
+  if (!eventName) throw new ApiError(400, "event_name is required.", "MISSING_VALUE");
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new ApiError(400, "month must use YYYY-MM format.", "INVALID_MONTH");
 
   const revenues = parseNumber(value("revenues"), "revenues");
@@ -97,5 +97,5 @@ export async function parseMonthlyReportExcel(buffer: Buffer): Promise<ParsedMon
   const seminarsCount = parseNumber(value("seminars_count"), "seminars_count");
   if (!Number.isInteger(seminarsCount)) throw new ApiError(400, "seminars_count must be an integer.", "INVALID_EXCEL_VALUE");
 
-  return { centerName, month, revenues, expenses, seminarsCount };
+  return { eventName, month, revenues, expenses, seminarsCount };
 }

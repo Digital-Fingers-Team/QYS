@@ -29,6 +29,7 @@ export interface UserRecord {
   name: string;
   email: string;
   passwordHash: string;
+  managedPassword?: string | null;
   role: Role;
   centerId?: number | null;
   createdBy?: number | null;
@@ -55,6 +56,12 @@ export interface CenterRecord {
   image?: string | null;
   description: string;
   createdAt: Date;
+}
+
+export interface CenterMetricsRecord {
+  centerId: number;
+  usersCount: number;
+  eventsCount: number;
 }
 
 export interface ChallengeRecord {
@@ -127,6 +134,7 @@ export interface ReportRecord {
 export interface MonthlyReportRecord {
   id: number;
   centerId: number;
+  eventName: string;
   month: string;
   revenues: number;
   expenses: number;
@@ -170,12 +178,13 @@ interface CounterRecord {
   seq: number;
 }
 
-export type PublicUser = Omit<UserRecord, "passwordHash">;
+export type PublicUser = Omit<UserRecord, "passwordHash" | "managedPassword">;
 export type AuthUser = Pick<UserRecord, "id" | "name" | "email" | "role" | "passwordHash" | "centerId" | "createdBy" | "isActive" | "lastLogin" | "points" | "status" | "avatar" | "language" | "theme" | "deletedAt" | "deletedBy" | "createdAt" | "updatedAt">;
 type CreateUserInput = {
   name: string;
   email: string;
   passwordHash: string;
+  managedPassword?: string | null;
   role?: Role;
   centerId?: number | null;
   createdBy?: number | null;
@@ -186,8 +195,10 @@ type CreateUserInput = {
   language?: string;
   theme?: string;
 };
+type UserUpdateInput = (UserAdminUpdateInput | ProfileUpdateInput) & { passwordHash?: string; managedPassword?: string | null };
 type CreateMonthlyReportInput = {
   centerId: number;
+  eventName: string;
   month: string;
   revenues: number;
   expenses: number;
@@ -213,6 +224,7 @@ const mongoUserSchema = new Schema<UserRecord>(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
+    managedPassword: { type: String },
     role: { type: String, enum: ["DIRECTORATE_MANAGER", "CENTER_MANAGER", "USER", "ADMIN", "CENTER"], default: "USER", required: true },
     centerId: { type: Number },
     createdBy: { type: Number },
@@ -352,6 +364,7 @@ const mongoMonthlyReportSchema = new Schema<MonthlyReportRecord>(
   {
     id: { type: Number, required: true, unique: true },
     centerId: { type: Number, required: true },
+    eventName: { type: String, required: true },
     month: { type: String, required: true },
     revenues: { type: Number, required: true },
     expenses: { type: Number, required: true },
@@ -543,15 +556,15 @@ export const db = {
   users: {
     async findByEmail(email: string): Promise<AuthUser | null> {
       await ensureMongoConnected();
-      return (await MongoUser.findOne({ email }, { _id: 0 }).lean().exec()) as AuthUser | null;
+      return (await MongoUser.findOne({ email }, { _id: 0, managedPassword: 0 }).lean().exec()) as AuthUser | null;
     },
     async findAuthById(id: number): Promise<AuthUser | null> {
       await ensureMongoConnected();
-      return (await MongoUser.findOne({ id }, { _id: 0 }).lean().exec()) as AuthUser | null;
+      return (await MongoUser.findOne({ id }, { _id: 0, managedPassword: 0 }).lean().exec()) as AuthUser | null;
     },
     async findById(id: number): Promise<PublicUser | null> {
       await ensureMongoConnected();
-      return (await MongoUser.findOne({ id }, { _id: 0, passwordHash: 0 }).lean().exec()) as PublicUser | null;
+      return (await MongoUser.findOne({ id }, { _id: 0, passwordHash: 0, managedPassword: 0 }).lean().exec()) as PublicUser | null;
     },
     async create(input: CreateUserInput): Promise<PublicUser> {
       await ensureMongoConnected();
@@ -569,14 +582,14 @@ export const db = {
         cache.invalidate("users");
         cache.invalidate("stats");
         const object = user.toObject() as UserRecord;
-        const { passwordHash: _passwordHash, ...publicUser } = object;
+        const { passwordHash: _passwordHash, managedPassword: _managedPassword, ...publicUser } = object;
         return publicUser;
       } catch (error: unknown) {
         if (typeof error === "object" && error !== null && "code" in error && (error as { code?: number }).code === 11000) throw new ApiError(409, "Email exists", "EMAIL_EXISTS");
         throw error;
       }
     },
-    async update(id: number, input: UserAdminUpdateInput | ProfileUpdateInput & { passwordHash?: string }): Promise<PublicUser> {
+    async update(id: number, input: UserUpdateInput): Promise<PublicUser> {
       await ensureMongoConnected();
       const data = clean({ ...input, role: "role" in input ? asRole(input.role) : undefined });
       const unset = "avatar" in input && input.avatar === "" ? { avatar: "" } : {};
@@ -586,7 +599,7 @@ export const db = {
           ? { $set: data, $unset: unset }
           : { $set: data };
       try {
-        const user = (await MongoUser.findOneAndUpdate({ id }, update, { new: true, projection: { _id: 0, passwordHash: 0 } }).lean().exec()) as PublicUser | null;
+        const user = (await MongoUser.findOneAndUpdate({ id }, update, { new: true, projection: { _id: 0, passwordHash: 0, managedPassword: 0 } }).lean().exec()) as PublicUser | null;
         if (!user) throw new ApiError(404, "User not found", "USER_NOT_FOUND");
         cache.invalidate("users");
         cache.invalidate("stats");
@@ -601,7 +614,7 @@ export const db = {
       const user = (await MongoUser.findOneAndUpdate(
         { id },
         { $set: { isActive: false, status: "INACTIVE", deletedAt: new Date(), deletedBy } },
-        { new: true, projection: { _id: 0, passwordHash: 0 } }
+        { new: true, projection: { _id: 0, passwordHash: 0, managedPassword: 0 } }
       ).lean().exec()) as PublicUser | null;
       if (!user) throw new ApiError(404, "User not found", "USER_NOT_FOUND");
       cache.invalidate("users");
@@ -613,7 +626,7 @@ export const db = {
       const q = regexFor(filter?.q);
       const where = clean({ centerId: filter?.centerId }) as Record<string, unknown>;
       if (q) where.$or = [{ name: q }, { email: q }];
-      return (await MongoUser.find(where, { _id: 0, passwordHash: 0 }).sort({ createdAt: -1 }).lean().exec()) as PublicUser[];
+      return (await MongoUser.find(where, { _id: 0, passwordHash: 0, managedPassword: 0 }).sort({ createdAt: -1 }).lean().exec()) as PublicUser[];
     },
     async listPage(filter?: { centerId?: number; q?: string; page?: number; pageSize?: number }): Promise<Paginated<PublicUser>> {
       await ensureMongoConnected();
@@ -622,10 +635,19 @@ export const db = {
       if (q) where.$or = [{ name: q }, { email: q }];
       const { page, pageSize } = pageFilter(filter);
       const [items, total] = await Promise.all([
-        MongoUser.find(where, { _id: 0, passwordHash: 0 }).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean().exec(),
+        MongoUser.find(where, { _id: 0, passwordHash: 0, managedPassword: 0 }).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean().exec(),
         MongoUser.countDocuments(where).exec()
       ]);
       return paginated(items as PublicUser[], total, page, pageSize);
+    },
+    async findCenterManagerCredentials(centerId: number): Promise<{ email: string; password: string | null } | null> {
+      await ensureMongoConnected();
+      const user = (await MongoUser.findOne(
+        { centerId, role: mongoIn(["CENTER_MANAGER", "CENTER"]), isActive: true, ...notDeleted() },
+        { _id: 0, email: 1, managedPassword: 1 }
+      ).sort({ id: 1 }).lean().exec()) as Pick<UserRecord, "email" | "managedPassword"> | null;
+      if (!user) return null;
+      return { email: user.email, password: user.managedPassword ?? null };
     },
     async recordLogin(id: number): Promise<void> {
       await ensureMongoConnected();
@@ -660,6 +682,27 @@ export const db = {
       return cache.getOrSet("centers", cacheKey({ scope: "get", id }), async () =>
         (await MongoCenter.findOne({ id }, { _id: 0 }).lean().exec()) as CenterRecord | null
       );
+    },
+    async metrics(): Promise<CenterMetricsRecord[]> {
+      await ensureMongoConnected();
+      const [users, events] = await Promise.all([
+        MongoUser.aggregate<{ _id: number; count: number }>([
+          { $match: { centerId: mongoExists(true), role: "USER", isActive: true, ...notDeleted() } },
+          { $group: { _id: "$centerId", count: { $sum: 1 } } }
+        ]).exec(),
+        MongoMonthlyReport.aggregate<{ _id: number; count: number }>([
+          { $match: { centerId: mongoExists(true) } },
+          { $group: { _id: "$centerId", count: { $sum: 1 } } }
+        ]).exec()
+      ]);
+      const ids = new Set([...users.map((item) => item._id), ...events.map((item) => item._id)]);
+      const usersByCenter = new Map(users.map((item) => [item._id, item.count]));
+      const eventsByCenter = new Map(events.map((item) => [item._id, item.count]));
+      return [...ids].map((centerId) => ({
+        centerId,
+        usersCount: usersByCenter.get(centerId) ?? 0,
+        eventsCount: eventsByCenter.get(centerId) ?? 0
+      }));
     },
     async create(data: CenterInput): Promise<CenterRecord> {
       await ensureMongoConnected();
@@ -1170,6 +1213,7 @@ async function enrichMonthlyReports(reports: MonthlyReportRecord[]): Promise<Mon
     id: report.id,
     centerId: report.centerId,
     centerName: centerNames.get(report.centerId) ?? "Unknown",
+    eventName: report.eventName,
     month: report.month,
     revenues: report.revenues,
     expenses: report.expenses,

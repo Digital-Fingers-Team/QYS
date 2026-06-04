@@ -9,7 +9,7 @@ import { field, num, useData, usePaginatedData } from './qys/data';
 import { canAccessReports, canManageAccounts, canOpenAdmin, roleLabel, roleOptionsFor } from './qys/permissions';
 import { useSession, writeSession } from './qys/session';
 import { Header, PaginationControls } from './qys/shared-ui';
-import type { Activity, Center, Challenge, Complaint, Idea, MonthlyReportUploadResponse, Report, Role, User } from './qys/types';
+import type { Activity, Center, CenterCredentials, CenterMetrics, Challenge, Complaint, Idea, MonthlyReportUploadResponse, Report, Role, User } from './qys/types';
 
 const roleOptions: Array<{ value: Role; label: string }> = [
   { value: 'USER', label: 'مستخدم' },
@@ -393,17 +393,22 @@ function Stat({ title, value }: { title: string; value: number | string }) {
 function CentersPage({ token, admin }: { token: string; admin: boolean }) {
   const [selectedCenter, setSelectedCenter] = useState<Center | null>(null);
   const { items: centers, page, totalPages, setPage } = usePaginatedData<Center>('/centers', token, 24);
+  const { data: centerMetrics } = useData<CenterMetrics[]>('/centers/metrics', token, [], admin);
+  const metricsByCenter = useMemo(
+    () => new Map((centerMetrics || []).map((item) => [item.centerId, item])),
+    [centerMetrics]
+  );
 
   return (
     <>
       <Header title={admin ? 'إدارة المراكز' : 'المراكز الشبابية والرياضية'} subtitle="استكشف مراكز الشباب في محافظة القليوبية." />
       <div className="panel centers-directory" style={{ marginTop: 16 }}>
         <div className="centers-directory-list">
-          {centers.map((center) => <CenterDirectoryRow key={center.id} center={center} admin={admin} onSelect={() => setSelectedCenter(center)} />)}
+          {centers.map((center) => <CenterDirectoryRow key={center.id} center={center} admin={admin} metrics={metricsByCenter.get(center.id)} onSelect={() => setSelectedCenter(center)} />)}
         </div>
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
-      {selectedCenter && <CenterDetailsModal center={selectedCenter} admin={admin} onClose={() => setSelectedCenter(null)} />}
+      {selectedCenter && <CenterDetailsModal center={selectedCenter} admin={admin} token={token} onClose={() => setSelectedCenter(null)} />}
     </>
   );
 }
@@ -653,13 +658,6 @@ function CentersMapPage({ token }: { token: string }) {
   );
 }
 
-function centerManagerCredentials(center: Center) {
-  return {
-    email: `manager_${center.id}@platform.com`,
-    password: 'center123'
-  };
-}
-
 function LocationPin() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -669,9 +667,7 @@ function LocationPin() {
   );
 }
 
-function CenterDirectoryRow({ center, admin, onSelect }: { center: Center; admin: boolean; onSelect: () => void }) {
-  const credentials = centerManagerCredentials(center);
-
+function CenterDirectoryRow({ center, admin, metrics, onSelect }: { center: Center; admin: boolean; metrics?: CenterMetrics; onSelect: () => void }) {
   return (
     <article
       className="center-directory-row"
@@ -692,39 +688,89 @@ function CenterDirectoryRow({ center, admin, onSelect }: { center: Center; admin
         <div className="center-directory-copy">
           <h3>{center.name}</h3>
           <p><span className="center-location-icon"><LocationPin /></span>{center.location}</p>
+          {admin && <div className="center-directory-metrics">
+            <span className="center-directory-metric">
+              <strong>{metrics?.eventsCount ?? 0}</strong>
+              <span>الفعاليات</span>
+            </span>
+            <span className="center-directory-metric">
+              <strong>{metrics?.usersCount ?? 0}</strong>
+              <span>المستخدمون</span>
+            </span>
+          </div>}
         </div>
       </div>
-      <div className="center-login-card">
-        {admin ? (
-          <>
-            <div className="center-login-line">
-              <span>البريد:</span>
-              <strong className="center-login-email">{credentials.email}</strong>
-            </div>
-            <div className="center-login-line">
-              <span>كلمة المرور:</span>
-              <strong className="center-login-password">{credentials.password}</strong>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="center-login-line">
-              <span>النوع:</span>
-              <strong>{center.type}</strong>
-            </div>
-            <div className="center-login-line">
-              <span>التقييم:</span>
-              <strong>{center.rating || '-'}</strong>
-            </div>
-          </>
-        )}
-      </div>
+      {!admin && <div className="center-login-card">
+        <div className="center-login-line">
+          <span>النوع:</span>
+          <strong>{center.type}</strong>
+        </div>
+        <div className="center-login-line">
+          <span>التقييم:</span>
+          <strong>{center.rating || '-'}</strong>
+        </div>
+      </div>}
     </article>
   );
 }
 
-function CenterDetailsModal({ center, admin, onClose }: { center: Center; admin: boolean; onClose: () => void }) {
-  const credentials = centerManagerCredentials(center);
+function CenterCredentialReveal({ center, token }: { center: Center; token: string }) {
+  const [credentials, setCredentials] = useState<CenterCredentials | null>(null);
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function reveal(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    setMessage('');
+    setLoading(true);
+    try {
+      const result = await api<CenterCredentials>(`/centers/${center.id}/credentials/reveal`, {
+        method: 'POST',
+        body: JSON.stringify({ password: field(form, 'password') })
+      }, token);
+      setCredentials(result);
+      form.reset();
+    } catch (err) {
+      setCredentials(null);
+      setMessage((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="center-credential-panel">
+      <div className="center-credential-header">
+        <div>
+          <span>بيانات دخول المركز</span>
+          <strong>{credentials ? 'تم التحقق' : 'محمية بكلمة مرور المدير'}</strong>
+        </div>
+      </div>
+      {credentials ? (
+        <div className="center-credential-results">
+          <div className="center-login-line">
+            <span>بريد المدير</span>
+            <strong className="center-login-email">{credentials.email}</strong>
+          </div>
+          <div className="center-login-line">
+            <span>كلمة المرور</span>
+            <strong className="center-login-password">{credentials.password}</strong>
+          </div>
+          <button className="btn" type="button" onClick={() => setCredentials(null)}>إخفاء كلمة المرور</button>
+        </div>
+      ) : (
+        <form className="center-credential-form" onSubmit={reveal}>
+          <input className="input" name="password" type="password" maxLength={128} placeholder="اكتب كلمة مرور حسابك" required />
+          <button className="btn primary" disabled={loading}>{loading ? 'جاري التحقق...' : 'إظهار كلمة المرور'}</button>
+        </form>
+      )}
+      {message && <p className="error">{message}</p>}
+    </div>
+  );
+}
+
+function CenterDetailsModal({ center, admin, token, onClose }: { center: Center; admin: boolean; token: string; onClose: () => void }) {
 
   return (
     <div className="center-detail-backdrop" role="presentation" onClick={onClose}>
@@ -748,17 +794,8 @@ function CenterDetailsModal({ center, admin, onClose }: { center: Center; admin:
             <span>التقييم</span>
             <strong>{center.rating || '-'}</strong>
           </div>
-          {admin && <>
-            <div>
-              <span>بريد المدير</span>
-              <strong className="center-login-email">{credentials.email}</strong>
-            </div>
-            <div>
-              <span>كلمة المرور</span>
-              <strong className="center-login-password">{credentials.password}</strong>
-            </div>
-          </>}
         </div>
+        {admin && <CenterCredentialReveal center={center} token={token} />}
         <div className="center-detail-description">
           <span>الوصف</span>
           <p>{center.description}</p>
@@ -1120,6 +1157,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
   const [editingRole, setEditingRole] = useState<Role>('USER');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
 
   function centerIdFrom(form: HTMLFormElement) {
     const value = num(form, 'centerId');
@@ -1159,6 +1197,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
       }, token);
       form.reset();
       setCreateRole(allowedRoles[0]?.value || 'USER');
+      setShowCreate(false);
     });
   }
 
@@ -1190,6 +1229,11 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
   }
 
   function beginEdit(user: User) {
+    if (editing?.id === user.id) {
+      setEditing(null);
+      return;
+    }
+    setShowCreate(false);
     setEditing(user);
     setEditingRole(user.role);
   }
@@ -1210,7 +1254,13 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
   return (
     <>
       <Header title="إدارة المستخدمين" />
-      <form className="panel form-grid" onSubmit={create}>
+      <div className="inline-actions" style={{ marginTop: 0 }}>
+        <button className="btn primary" type="button" onClick={() => {
+          setShowCreate((value) => !value);
+          setEditing(null);
+        }}>{showCreate ? 'إغلاق إضافة مستخدم' : 'إضافة مستخدم'}</button>
+      </div>
+      {showCreate && <form className="panel form-grid" onSubmit={create} style={{ marginTop: 16 }}>
         <input className="input" name="name" placeholder="الاسم" required />
         <input className="input" name="email" type="email" placeholder="البريد" required />
         <input className="input" name="password" type="password" minLength={6} maxLength={128} placeholder="كلمة مرور مؤقتة (6 أحرف على الأقل)" required />
@@ -1220,9 +1270,10 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
         </select>
         <CenterSelect centers={centers} />
         <button className="btn primary" disabled={busy}>إضافة</button>
-      </form>
+      </form>}
       {message && <p className="error">{message}</p>}
       {editing && <form key={editing.id} className="panel form-grid" onSubmit={update} style={{ marginTop: 16 }}>
+        <h3>تعديل مستخدم</h3>
         <input className="input" name="name" defaultValue={editing.name} required />
         <input className="input" name="email" type="email" defaultValue={editing.email} required />
         {hasUserPoints(editingRole) && <input className="input" name="points" type="number" defaultValue={editing.points} />}
@@ -1248,7 +1299,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
               <td><span className="badge">{user.isActive ? 'نشط' : 'معطل'}</span></td>
               <td>
                 <div className="inline-actions">
-                  <button className="btn" onClick={() => beginEdit(user)}>تعديل</button>
+                  <button className={editing?.id === user.id ? 'btn primary' : 'btn'} type="button" onClick={() => beginEdit(user)}>{editing?.id === user.id ? 'إغلاق التعديل' : 'تعديل'}</button>
                   <button className={user.isActive ? 'btn danger' : 'btn'} onClick={() => toggleActive(user)}>{user.isActive ? 'تعطيل' : 'تفعيل'}</button>
                 </div>
               </td>
@@ -1265,6 +1316,7 @@ function CenterUsersPage({ token }: { token: string }) {
   const { items: users, error, load, page, totalPages, setPage } = usePaginatedData<User>('/users', token, 20);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
 
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -1277,6 +1329,7 @@ function CenterUsersPage({ token }: { token: string }) {
         body: JSON.stringify({ name: field(form, 'name'), email: field(form, 'email'), password: field(form, 'password'), role: 'USER', status: 'ACTIVE', isActive: true })
       }, token);
       form.reset();
+      setShowCreate(false);
       load();
     } catch (err) {
       setMessage((err as Error).message);
@@ -1288,12 +1341,15 @@ function CenterUsersPage({ token }: { token: string }) {
   return (
     <>
       <Header title="مستخدمو المركز" subtitle="الحسابات المرتبطة بمركزك فقط." />
-      <form className="panel form-grid" onSubmit={create}>
+      <div className="inline-actions" style={{ marginTop: 0 }}>
+        <button className="btn primary" type="button" onClick={() => setShowCreate((value) => !value)}>{showCreate ? 'إغلاق إضافة مستخدم' : 'إضافة مستخدم'}</button>
+      </div>
+      {showCreate && <form className="panel form-grid" onSubmit={create} style={{ marginTop: 16 }}>
         <input className="input" name="name" placeholder="اسم المستخدم" required />
         <input className="input" name="email" type="email" placeholder="البريد الإلكتروني" required />
         <input className="input" name="password" type="password" minLength={6} maxLength={128} placeholder="كلمة مرور مؤقتة (6 أحرف على الأقل)" required />
         <button className="btn primary" disabled={loading}>{loading ? 'جاري الإضافة...' : 'إضافة مستخدم للمركز'}</button>
-      </form>
+      </form>}
       {message && <p className="error">{message}</p>}
       {error && <p className="error">{error}</p>}
       <div className="panel table-wrap" style={{ marginTop: 16 }}>
@@ -1479,9 +1535,10 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
       <div className="panel table-wrap" style={{ marginTop: 16 }}>
         <h3>بيانات المراكز</h3>
         <table className="table">
-          <thead><tr><th>المركز</th><th>الشهر</th><th>الإيرادات</th><th>المصروفات</th><th>الندوات</th><th>الملف</th></tr></thead>
+          <thead><tr><th>المركز</th><th>الفعالية</th><th>الشهر</th><th>الإيرادات</th><th>المصروفات</th><th>الندوات</th><th>الملف</th></tr></thead>
           <tbody>{reports.map((report) => <tr key={report.id}>
             <td>{report.centerName}</td>
+            <td>{report.eventName || '-'}</td>
             <td>{formatMonthArabic(report.month)}</td>
             <td>{formatMoney(report.revenues)}</td>
             <td>{formatMoney(report.expenses)}</td>

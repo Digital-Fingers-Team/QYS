@@ -55,6 +55,9 @@ export async function changePassword(userId: number, input: unknown) {
   if (!user || user.isActive === false || user.deletedAt) throw new ApiError(401, "Account is inactive", "ACCOUNT_INACTIVE");
   const ok = await bcrypt.compare(data.currentPassword, user.passwordHash);
   if (!ok) throw new ApiError(400, "Current password is incorrect", "CURRENT_PASSWORD_INCORRECT");
-  await db.users.update(userId, { passwordHash: await bcrypt.hash(data.newPassword, 12) });
+  await db.users.update(userId, {
+    passwordHash: await bcrypt.hash(data.newPassword, 12),
+    managedPassword: normalizeRole(user.role) === "CENTER_MANAGER" ? data.newPassword : undefined
+  });
   return { ok: true };
 }

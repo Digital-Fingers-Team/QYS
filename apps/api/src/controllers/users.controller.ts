@@ -48,7 +48,12 @@ export const usersController = {
     assertSafeUserRole(req, data.role, data.centerId);
     await assertCenterExists(data.centerId);
     const { password, ...rest } = data;
-    const user = await db.users.create({ ...rest, createdBy: req.user!.userId, passwordHash: await bcrypt.hash(password, 12) });
+    const user = await db.users.create({
+      ...rest,
+      createdBy: req.user!.userId,
+      passwordHash: await bcrypt.hash(password, 12),
+      managedPassword: normalizeRole(data.role) === "CENTER_MANAGER" ? password : undefined
+    });
     await db.activities.create(`Created account #${user.id}`, req.user!.userId);
     res.status(201).json(publicUser(user));
   },
@@ -62,14 +67,22 @@ export const usersController = {
     if (idParam(req) === req.user!.userId && data.isActive === false) throw new ApiError(400, "You cannot deactivate your own account", "SELF_DEACTIVATION_DENIED");
     const passwordHash = await hashPassword(data.password);
     const { password: _password, ...rest } = data;
-    const user = await db.users.update(idParam(req), { ...rest, passwordHash });
+    const managedPassword = data.password && normalizeRole(finalRole) === "CENTER_MANAGER"
+      ? data.password
+      : data.role && normalizeRole(finalRole) !== "CENTER_MANAGER"
+        ? null
+        : undefined;
+    const user = await db.users.update(idParam(req), { ...rest, passwordHash, managedPassword });
     await db.activities.create(`Updated account #${user.id}`, req.user!.userId);
     res.json(publicUser(user));
   },
   resetPassword: async (req: AuthedRequest, res: Response) => {
-    await assertCanManageAccount(req, idParam(req));
+    const target = await assertCanManageAccount(req, idParam(req));
     const { password } = passwordResetSchema.parse(req.body);
-    const user = await db.users.update(idParam(req), { passwordHash: await bcrypt.hash(password, 12) });
+    const user = await db.users.update(idParam(req), {
+      passwordHash: await bcrypt.hash(password, 12),
+      managedPassword: normalizeRole(target.role) === "CENTER_MANAGER" ? password : undefined
+    });
     await db.activities.create(`Reset password for account #${user.id}`, req.user!.userId);
     res.json(publicUser(user));
   },

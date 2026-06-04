@@ -32,9 +32,11 @@ router.patch("/users/:id/password", auth, requireAdmin, asyncHandler(usersContro
 router.delete("/users/:id", auth, requireAdmin, asyncHandler(usersController.delete));
 
 router.get("/centers", asyncHandler(centersController.list));
+router.get("/centers/metrics", auth, requireAdmin, asyncHandler(centersController.metrics));
 router.get("/centers/:id", asyncHandler(centersController.get));
 router.post("/centers", auth, requireAdmin, asyncHandler(centersController.create));
 router.patch("/centers/:id", auth, requireAdmin, asyncHandler(centersController.update));
+router.post("/centers/:id/credentials/reveal", auth, requireAdmin, authRateLimit, asyncHandler(centersController.revealCredentials));
 router.delete("/centers/:id", auth, requireAdmin, asyncHandler(centersController.delete));
 
 router.get("/challenges", optionalAuth, asyncHandler(challengesController.list));

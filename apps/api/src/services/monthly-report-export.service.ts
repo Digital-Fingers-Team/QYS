@@ -2,8 +2,9 @@ import ExcelJS from "exceljs";
 import type { CenterRecord } from "../db";
 import type { MonthlyReportRow } from "@qys/shared";
 
-function safeCell(value: string) {
-  return /^[=+\-@]/.test(value) ? `'${value}` : value;
+function safeCell(value?: string | null) {
+  const text = value ?? "";
+  return /^[=+\-@]/.test(text) ? `'${text}` : text;
 }
 
 export async function buildMonthlyReportWorkbook(month: string, centers: CenterRecord[], reports: MonthlyReportRow[]) {
@@ -16,6 +17,7 @@ export async function buildMonthlyReportWorkbook(month: string, centers: CenterR
 
   sheet.columns = [
     { header: "center_name", key: "centerName", width: 36 },
+    { header: "event_name", key: "eventName", width: 36 },
     { header: "month", key: "month", width: 14 },
     { header: "revenues", key: "revenues", width: 16 },
     { header: "expenses", key: "expenses", width: 16 },
@@ -31,6 +33,7 @@ export async function buildMonthlyReportWorkbook(month: string, centers: CenterR
     const report = byCenter.get(center.id);
     sheet.addRow({
       centerName: safeCell(center.name),
+      eventName: safeCell(report?.eventName || ""),
       month,
       revenues: report?.revenues ?? 0,
       expenses: report?.expenses ?? 0,
@@ -41,6 +44,7 @@ export async function buildMonthlyReportWorkbook(month: string, centers: CenterR
 
   const totalRow = sheet.addRow({
     centerName: "الإجمالي",
+    eventName: "",
     month,
     revenues: reports.reduce((total, report) => total + report.revenues, 0),
     expenses: reports.reduce((total, report) => total + report.expenses, 0),
@@ -64,7 +68,7 @@ export async function buildMonthlyReportWorkbook(month: string, centers: CenterR
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
-export async function buildMonthlyTemplateWorkbook(month: string, centerName?: string) {
+export async function buildMonthlyTemplateWorkbook(month: string) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "QYS Platform";
   workbook.created = new Date();
@@ -73,7 +77,7 @@ export async function buildMonthlyTemplateWorkbook(month: string, centerName?: s
   });
 
   sheet.columns = [
-    { header: "center_name", key: "centerName", width: 36 },
+    { header: "event_name", key: "eventName", width: 36 },
     { header: "month", key: "month", width: 14 },
     { header: "revenues", key: "revenues", width: 16 },
     { header: "expenses", key: "expenses", width: 16 },
@@ -81,7 +85,7 @@ export async function buildMonthlyTemplateWorkbook(month: string, centerName?: s
   ];
 
   sheet.addRow({
-    centerName: safeCell(centerName || "اسم المركز كما هو في النظام"),
+    eventName: "اسم الفعالية",
     month,
     revenues: 0,
     expenses: 0,

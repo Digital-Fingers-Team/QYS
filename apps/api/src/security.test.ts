@@ -14,7 +14,7 @@ async function workbookBuffer(row: Record<string, unknown>) {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Monthly Report");
   sheet.columns = [
-    { header: "center_name", key: "centerName" },
+    { header: "event_name", key: "eventName" },
     { header: "month", key: "month" },
     { header: "revenues", key: "revenues" },
     { header: "expenses", key: "expenses" },
@@ -65,7 +65,7 @@ test("shared profile schema accepts empty avatar removal marker", () => {
 test("Excel upload validation accepts valid xlsx and assigns safe names", async () => {
   configureEnv();
   const { validateExcelFile } = await import("./services/excel-upload.service");
-  const buffer = await workbookBuffer({ centerName: "Center", month: "2026-05", revenues: 1, expenses: 1, seminarsCount: 1 });
+  const buffer = await workbookBuffer({ eventName: "Event", month: "2026-05", revenues: 1, expenses: 1, seminarsCount: 1 });
   const metadata = validateExcelFile(uploadFile(buffer, "../evil.xlsx"));
   assert.match(metadata.storedName, /^[0-9a-f-]{36}\.xlsx$/);
   assert.equal(metadata.originalName, "evil.xlsx");
@@ -84,8 +84,8 @@ test("Excel parser rejects formulas", async () => {
   const { parseMonthlyReportExcel } = await import("./services/excel-parser.service");
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Monthly Report");
-  sheet.addRow(["center_name", "month", "revenues", "expenses", "seminars_count"]);
-  sheet.addRow(["Center", "2026-05", { formula: "1+1", result: 2 }, 1, 1]);
+  sheet.addRow(["event_name", "month", "revenues", "expenses", "seminars_count"]);
+  sheet.addRow(["Event", "2026-05", { formula: "1+1", result: 2 }, 1, 1]);
   const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
   await assert.rejects(() => parseMonthlyReportExcel(buffer), /formulas|UNSAFE_EXCEL_CELL/);
 });

@@ -125,6 +125,7 @@ export type MonthlyReportRow = {
   id: number;
   centerId: number;
   centerName: string;
+  eventName?: string | null;
   month: string;
   revenues: number;
   expenses: number;
