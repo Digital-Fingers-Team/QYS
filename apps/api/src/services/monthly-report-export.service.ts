@@ -21,7 +21,6 @@ export async function buildMonthlyReportWorkbook(month: string, centers: CenterR
     { header: "month", key: "month", width: 14 },
     { header: "revenues", key: "revenues", width: 16 },
     { header: "expenses", key: "expenses", width: 16 },
-    { header: "seminars_count", key: "seminarsCount", width: 18 },
     { header: "status", key: "status", width: 16 }
   ];
   sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -37,7 +36,6 @@ export async function buildMonthlyReportWorkbook(month: string, centers: CenterR
       month,
       revenues: report?.revenues ?? 0,
       expenses: report?.expenses ?? 0,
-      seminarsCount: report?.seminarsCount ?? 0,
       status: report ? "تم الرفع" : "لم يتم الرفع"
     });
   }
@@ -48,7 +46,6 @@ export async function buildMonthlyReportWorkbook(month: string, centers: CenterR
     month,
     revenues: reports.reduce((total, report) => total + report.revenues, 0),
     expenses: reports.reduce((total, report) => total + report.expenses, 0),
-    seminarsCount: reports.reduce((total, report) => total + report.seminarsCount, 0),
     status: ""
   });
   totalRow.font = { bold: true };
@@ -80,16 +77,14 @@ export async function buildMonthlyTemplateWorkbook(month: string) {
     { header: "event_name", key: "eventName", width: 36 },
     { header: "month", key: "month", width: 14 },
     { header: "revenues", key: "revenues", width: 16 },
-    { header: "expenses", key: "expenses", width: 16 },
-    { header: "seminars_count", key: "seminarsCount", width: 18 }
+    { header: "expenses", key: "expenses", width: 16 }
   ];
 
   sheet.addRow({
     eventName: "اسم الفعالية",
     month,
     revenues: 0,
-    expenses: 0,
-    seminarsCount: 0
+    expenses: 0
   });
 
   sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -99,7 +94,6 @@ export async function buildMonthlyTemplateWorkbook(month: string) {
   sheet.getCell("B2").numFmt = "@";
   sheet.getCell("C2").numFmt = "#,##0.00";
   sheet.getCell("D2").numFmt = "#,##0.00";
-  sheet.getCell("E2").numFmt = "0";
   sheet.getCell("B2").dataValidation = {
     type: "textLength",
     operator: "equal",
@@ -118,15 +112,6 @@ export async function buildMonthlyTemplateWorkbook(month: string) {
       error: "Value must be zero or greater."
     };
   }
-  sheet.getCell("E2").dataValidation = {
-    type: "whole",
-    operator: "greaterThanOrEqual",
-    formulae: [0],
-    showErrorMessage: true,
-    errorTitle: "Invalid seminars count",
-    error: "Seminars count must be a whole number zero or greater."
-  };
-
   sheet.eachRow((row) => {
     row.eachCell((cell) => {
       cell.border = {

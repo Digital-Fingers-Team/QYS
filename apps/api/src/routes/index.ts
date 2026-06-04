@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   activitiesController,
   authController,
+  chatController,
   centersController,
   challengesController,
   complaintsController,
@@ -62,6 +63,9 @@ router.post("/complaints", auth, asyncHandler(complaintsController.create));
 router.patch("/complaints/:id/center-status", auth, asyncHandler(complaintsController.updateCenterStatus));
 router.patch("/complaints/:id/progress", auth, asyncHandler(complaintsController.updateProgress));
 router.patch("/complaints/:id/status", auth, requireAdmin, asyncHandler(complaintsController.updateStatus));
+
+router.get("/chat/messages", auth, requireRole(...managementRoles), asyncHandler(chatController.list));
+router.post("/chat/messages", auth, requireRole(...managementRoles), asyncHandler(chatController.create));
 
 router.get("/reports", auth, requireRole(...reportRoles), asyncHandler(reportsController.list));
 router.post("/reports", auth, requireRole(...reportRoles), asyncHandler(reportsController.create));

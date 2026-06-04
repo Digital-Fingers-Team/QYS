@@ -183,6 +183,16 @@ export interface UploadHistoryRecord {
   createdAt: Date;
 }
 
+export interface ChatMessageRecord {
+  id: number;
+  target: "ALL" | "CENTER";
+  centerId?: number | null;
+  senderId: number;
+  senderRole: Role;
+  body: string;
+  createdAt: Date;
+}
+
 interface CounterRecord {
   key: string;
   seq: number;
@@ -218,9 +228,11 @@ type CreateMonthlyReportInput = {
 };
 type CreateUploadedFileInput = Omit<UploadedFileRecord, "id" | "uploadedAt"> & { uploadedAt?: Date };
 type CreateUploadHistoryInput = Omit<UploadHistoryRecord, "id" | "createdAt"> & { createdAt?: Date };
+type CreateChatMessageInput = Omit<ChatMessageRecord, "id" | "createdAt"> & { createdAt?: Date };
 type ChallengeListItem = ChallengeRecord & { _count: { participations: number }; joined?: boolean };
 type IdeaListItem = IdeaRecord & { user: { name: string } };
 type ComplaintListItem = ComplaintRecord & { user: { name: string }; center?: { name: string; location: string } | null };
+type ChatMessageListItem = ChatMessageRecord & { sender?: { name: string }; center?: { name: string; location: string } | null };
 type PageFilter = Pick<PaginationQueryInput, "page" | "pageSize">;
 type ListFilter = { q?: string; page?: number; pageSize?: number };
 type IdeaListFilter = ListFilter & { userId?: number; centerId?: number; statuses?: string[]; includeUserId?: number; visibleToUsers?: boolean };
@@ -437,6 +449,21 @@ const mongoUploadHistorySchema = new Schema<UploadHistoryRecord>(
 mongoUploadHistorySchema.index({ month: 1 });
 mongoUploadHistorySchema.index({ centerId: 1, month: 1 });
 
+const mongoChatMessageSchema = new Schema<ChatMessageRecord>(
+  {
+    id: { type: Number, required: true, unique: true },
+    target: { type: String, enum: ["ALL", "CENTER"], required: true },
+    centerId: { type: Number },
+    senderId: { type: Number, required: true },
+    senderRole: { type: String, enum: ["DIRECTORATE_MANAGER", "CENTER_MANAGER", "USER", "ADMIN", "CENTER"], required: true },
+    body: { type: String, required: true },
+    createdAt: { type: Date, default: () => new Date(), required: true }
+  },
+  { versionKey: false }
+);
+mongoChatMessageSchema.index({ target: 1, createdAt: -1 });
+mongoChatMessageSchema.index({ centerId: 1, createdAt: -1 });
+
 function getOrCreateModel<T>(name: string, schema: Schema<T>) {
   return (mongoose.models[name] as mongoose.Model<T> | undefined) ?? mongoose.model<T>(name, schema);
 }
@@ -453,6 +480,7 @@ const MongoReport = getOrCreateModel<ReportRecord>("Report", mongoReportSchema);
 const MongoMonthlyReport = getOrCreateModel<MonthlyReportRecord>("MonthlyReport", mongoMonthlyReportSchema);
 const MongoUploadedFile = getOrCreateModel<UploadedFileRecord>("UploadedFile", mongoUploadedFileSchema);
 const MongoUploadHistory = getOrCreateModel<UploadHistoryRecord>("UploadHistory", mongoUploadHistorySchema);
+const MongoChatMessage = getOrCreateModel<ChatMessageRecord>("ChatMessage", mongoChatMessageSchema);
 
 async function ensureMongoConnected(): Promise<void> {
   if (mongoose.connection.readyState === 1) return;
@@ -587,6 +615,26 @@ async function enrichComplaints(complaints: ComplaintRecord[]): Promise<Complain
     return {
       ...complaint,
       user: { name: names.get(complaint.userId) ?? "Unknown" },
+      center: center ? { name: center.name, location: center.location } : null
+    };
+  });
+}
+
+async function enrichChatMessages(messages: ChatMessageRecord[]): Promise<ChatMessageListItem[]> {
+  if (!messages.length) return [];
+  const userIds = [...new Set(messages.map((message) => message.senderId))];
+  const centerIds = [...new Set(messages.map((message) => message.centerId).filter((id): id is number => typeof id === "number"))];
+  const [users, centers] = await Promise.all([
+    userIds.length ? MongoUser.find({ id: mongoIn(userIds) }, { _id: 0, id: 1, name: 1 }).lean().exec() : [],
+    centerIds.length ? MongoCenter.find({ id: mongoIn(centerIds) }, { _id: 0, id: 1, name: 1, location: 1 }).lean().exec() : []
+  ]);
+  const usersById = new Map((users as Array<Pick<UserRecord, "id" | "name">>).map((user) => [user.id, user.name]));
+  const centersById = new Map((centers as Array<Pick<CenterRecord, "id" | "name" | "location">>).map((center) => [center.id, center]));
+  return messages.map((message) => {
+    const center = message.centerId ? centersById.get(message.centerId) : null;
+    return {
+      ...message,
+      sender: { name: usersById.get(message.senderId) ?? "Unknown" },
       center: center ? { name: center.name, location: center.location } : null
     };
   });
@@ -1203,6 +1251,30 @@ export const db = {
       await ensureMongoConnected();
       const item = await MongoUploadHistory.create({ ...data, id: await nextId("upload_history") });
       return item.toObject() as unknown as UploadHistoryRecord;
+    }
+  },
+
+  chat: {
+    async create(data: CreateChatMessageInput): Promise<ChatMessageListItem> {
+      await ensureMongoConnected();
+      const body = data.body.normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 2000);
+      if (!body) throw new ApiError(400, "Message cannot be empty", "CHAT_MESSAGE_EMPTY");
+      const message = await MongoChatMessage.create({ ...data, body, id: await nextId("chat_messages") });
+      const [item] = await enrichChatMessages([message.toObject() as unknown as ChatMessageRecord]);
+      return item;
+    },
+    async list(filter: { target: "ALL" } | { target: "CENTER"; centerId: number }): Promise<ChatMessageListItem[]> {
+      await ensureMongoConnected();
+      const where = filter.target === "ALL" ? { target: "ALL" } : { target: "CENTER", centerId: filter.centerId };
+      const messages = (await MongoChatMessage.find(where, { _id: 0 }).sort({ createdAt: 1 }).limit(300).lean().exec()) as ChatMessageRecord[];
+      return enrichChatMessages(messages);
+    },
+    async listForCenter(centerId: number): Promise<{ broadcast: ChatMessageListItem[]; private: ChatMessageListItem[] }> {
+      const [broadcast, privateMessages] = await Promise.all([
+        db.chat.list({ target: "ALL" }),
+        db.chat.list({ target: "CENTER", centerId })
+      ]);
+      return { broadcast, private: privateMessages };
     }
   },
 

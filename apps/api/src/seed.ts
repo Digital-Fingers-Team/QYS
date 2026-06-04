@@ -267,6 +267,7 @@ const challenges = [
     reward: 100,
     status: "ACTIVE" as const,
     category: "fitness",
+    targetAreas: [],
     participants: 15,
     deadline: "2026-06-01"
   },
@@ -276,6 +277,7 @@ const challenges = [
     reward: 500,
     status: "ACTIVE" as const,
     category: "mental",
+    targetAreas: [],
     participants: 40,
     deadline: "2026-05-15"
   },
@@ -285,6 +287,7 @@ const challenges = [
     reward: 300,
     status: "PENDING" as const,
     category: "running",
+    targetAreas: [],
     participants: 0,
     deadline: "2026-07-10"
   }

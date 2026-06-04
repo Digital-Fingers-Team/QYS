@@ -62,8 +62,8 @@ Center managers use `/center` and can see only users/reports linked to their own
 The reports area now supports production monthly Excel aggregation:
 - Center managers upload one strict Excel file per center/month from `/center/reports`.
 - Directorate manager accounts upload on behalf of a selected center from `/admin/reports`.
-- Accepted columns in the first worksheet are exactly: `center_name`, `month`, `revenues`, `expenses`, `seminars_count`.
-- `month` must use `YYYY-MM`; financial fields must be non-negative numbers; `seminars_count` must be a non-negative integer.
+- Accepted columns in the first worksheet are exactly: `event_name`, `month`, `revenues`, `expenses`.
+- `month` must use `YYYY-MM`; financial fields must be non-negative numbers.
 - Duplicate center/month uploads return a confirmation flow in the UI and can be replaced only after confirmation.
 - The original Excel binary is not retained; the system stores upload metadata, SHA-256 hash, validation status, audit history, and parsed monthly report rows.
 - Managers can download the official master workbook from the same reports page.

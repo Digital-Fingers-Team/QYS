@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import { CenterPage } from '../qys-client';
 
 export default function CenterIndexPage() {
-  redirect('/center/reports');
+  return <CenterPage section="dashboard" />;
 }

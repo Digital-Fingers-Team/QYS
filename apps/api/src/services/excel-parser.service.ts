@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { ApiError } from "../errors/api-error";
 
-const requiredHeaders = ["event_name", "month", "revenues", "expenses", "seminars_count"] as const;
+const requiredHeaders = ["event_name", "month", "revenues", "expenses"] as const;
 type RequiredHeader = (typeof requiredHeaders)[number];
 const maxRows = 20;
 const maxColumns = requiredHeaders.length;
@@ -94,8 +94,6 @@ export async function parseMonthlyReportExcel(buffer: Buffer): Promise<ParsedMon
 
   const revenues = parseNumber(value("revenues"), "revenues");
   const expenses = parseNumber(value("expenses"), "expenses");
-  const seminarsCount = parseNumber(value("seminars_count"), "seminars_count");
-  if (!Number.isInteger(seminarsCount)) throw new ApiError(400, "seminars_count must be an integer.", "INVALID_EXCEL_VALUE");
 
-  return { eventName, month, revenues, expenses, seminarsCount };
+  return { eventName, month, revenues, expenses, seminarsCount: 0 };
 }

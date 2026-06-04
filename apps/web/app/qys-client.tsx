@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import type { MonthlyReportRow, MonthlyReportsSummary, Paginated } from '@qys/shared';
 import { api, apiForm, ApiClientError, downloadApi } from '../lib/api';
@@ -9,7 +9,7 @@ import { field, num, useData, usePaginatedData } from './qys/data';
 import { canAccessReports, canManageAccounts, canOpenAdmin, roleLabel, roleOptionsFor } from './qys/permissions';
 import { useSession, writeSession } from './qys/session';
 import { Header, PaginationControls } from './qys/shared-ui';
-import type { Activity, Center, CenterCredentials, CenterMetrics, Challenge, Complaint, Idea, MonthlyReportUploadResponse, Report, Role, User } from './qys/types';
+import type { Activity, Center, CenterCredentials, CenterMetrics, Challenge, ChatMessage, Complaint, Idea, MonthlyReportUploadResponse, Report, Role, User } from './qys/types';
 
 const roleOptions: Array<{ value: Role; label: string }> = [
   { value: 'USER', label: 'مستخدم' },
@@ -32,6 +32,7 @@ const labels = {
     settings: 'الإعدادات',
     users: 'المستخدمون',
     reports: 'التقارير',
+    chat: 'المحادثات',
     logout: 'تسجيل الخروج',
     save: 'حفظ',
     add: 'إضافة',
@@ -54,6 +55,7 @@ const labels = {
     settings: 'Settings',
     users: 'Users',
     reports: 'Reports',
+    chat: 'Chat',
     logout: 'Logout',
     save: 'Save',
     add: 'Add',
@@ -228,6 +230,9 @@ function navIconFor(href: string) {
   if (href.includes('complaints')) {
     return <NavSvg><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" /><path d="M12 7v5" /><path d="M12 15h.01" /></NavSvg>;
   }
+  if (href.includes('chat')) {
+    return <NavSvg><path d="M21 15a4 4 0 0 1-4 4H9l-6 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" /><path d="M8 9h8" /><path d="M8 13h5" /></NavSvg>;
+  }
   if (href.includes('reports')) {
     return <NavSvg><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /><path d="M8 17v-3" /><path d="M12 17v-6" /><path d="M16 17v-4" /></NavSvg>;
   }
@@ -280,16 +285,19 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
         ['/admin/challenges', t.challenges],
         ['/admin/complaints', t.complaints],
         ['/admin/reports', t.reports],
+        ['/admin/chat', t.chat],
         ['/admin/settings', t.settings]
       ]
     : user?.role === 'CENTER_MANAGER'
       ? [
+        ['/center', t.dashboard],
         ['/center/reports', t.reports],
         ['/center/map', t.map],
         ['/center/ideas', t.ideas],
         ['/center/users', t.users],
         ['/center/challenges', t.challenges],
         ['/center/complaints', t.complaints],
+        ['/center/chat', t.chat],
         ['/center/settings', t.settings]
       ]
       : [
@@ -377,7 +385,7 @@ export function UserPage({ section }: { section: 'dashboard' | 'centers' | 'map'
   );
 }
 
-export function CenterPage({ section }: { section: 'reports' | 'map' | 'ideas' | 'users' | 'challenges' | 'complaints' | 'settings' }) {
+export function CenterPage({ section }: { section: 'dashboard' | 'reports' | 'map' | 'ideas' | 'users' | 'challenges' | 'complaints' | 'chat' | 'settings' }) {
   const router = useRouter();
   const { token, user, setUser, ready, logout } = useSession(true);
 
@@ -390,12 +398,14 @@ export function CenterPage({ section }: { section: 'reports' | 'map' | 'ideas' |
   return (
     <Shell>
       {user.role !== 'CENTER_MANAGER' && <Header title="غير مصرح" subtitle="لا تملك صلاحية فتح هذه الصفحة." />}
+      {user.role === 'CENTER_MANAGER' && section === 'dashboard' && <CenterManagerDashboard token={token} />}
       {user.role === 'CENTER_MANAGER' && section === 'reports' && <ReportsAdmin token={token} currentUser={user} />}
       {user.role === 'CENTER_MANAGER' && section === 'map' && <CentersMapPage token={token} />}
       {user.role === 'CENTER_MANAGER' && section === 'ideas' && <IdeasPage token={token} admin={false} centerApproval />}
       {user.role === 'CENTER_MANAGER' && section === 'users' && <CenterUsersPage token={token} />}
       {user.role === 'CENTER_MANAGER' && section === 'challenges' && <ChallengesPage token={token} admin={false} />}
       {user.role === 'CENTER_MANAGER' && section === 'complaints' && <ComplaintsPage token={token} admin={false} centerApproval />}
+      {user.role === 'CENTER_MANAGER' && section === 'chat' && <ChatPage token={token} currentUser={user} admin={false} />}
       {user.role === 'CENTER_MANAGER' && section === 'settings' && <SettingsPage token={token} user={user} setUser={setUser} logout={logout} />}
     </Shell>
   );
@@ -403,19 +413,83 @@ export function CenterPage({ section }: { section: 'reports' | 'map' | 'ideas' |
 
 function UserDashboard({ token }: { token: string }) {
   const { data } = useData<any>('/stats/me', token);
+  const { items: complaints } = usePaginatedData<Complaint>('/complaints', token, 10);
   const suggestedChallenges = data?.suggestedChallenges || [];
   const recentIdeas = data?.recentIdeas || [];
+  const openComplaints = complaints.filter((complaint) => !['RESOLVED', 'REJECTED'].includes(complaint.status)).length;
+  const alerts: AlertItem[] = [
+    openComplaints > 0 ? { title: 'طلبات تحتاج متابعة', detail: `${openComplaints} شكوى أو مقترح ما زال قيد المعالجة.`, tone: 'warning', href: '/complaints' } : undefined,
+    suggestedChallenges.length > 0 ? { title: 'تحديات متاحة', detail: `${suggestedChallenges.length} تحديات مناسبة يمكنك الانضمام إليها الآن.`, tone: 'success', href: '/challenges' } : undefined,
+    recentIdeas.length === 0 ? { title: 'ابدأ بفكرة تطوير', detail: 'شارك فكرة جديدة لتطوير مركزك أو الخدمات الرياضية.', tone: 'info', href: '/ideas' } : undefined
+  ].filter(Boolean) as AlertItem[];
   return (
     <>
-      <Header title="أهلاً بك في منصتك الرياضية" subtitle="تابع نشاطك وشارك في الخدمات المتاحة." />
+      <Header title="أهلا بك في منصتك الرياضية" subtitle="تابع نشاطك، تنبيهاتك، والتحديات المتاحة لك." />
       <div className="grid stats">
         <Stat title="أفكاري" value={data?.ideas || 0} />
         <Stat title="تحدياتي" value={data?.joinedChallenges || 0} />
+        <Stat title="طلباتي المفتوحة" value={openComplaints} />
+      </div>
+      <div className="dashboard-grid" style={{ marginTop: 16 }}>
+        <AlertPanel title="تنبيهات اليوم" alerts={alerts} />
+        <NotificationsPanel items={[
+          { title: 'آخر الأفكار', detail: recentIdeas.length ? 'لديك أفكار منشورة أو تحت المتابعة.' : 'لم يتم تسجيل أفكار حديثة بعد.', tone: recentIdeas.length ? 'success' : 'info', href: '/ideas' },
+          { title: 'التحديات', detail: suggestedChallenges.length ? 'توجد تحديات جديدة بانتظار مشاركتك.' : 'لا توجد تحديات جديدة حاليا.', tone: suggestedChallenges.length ? 'warning' : 'success', href: '/challenges' }
+        ]} />
       </div>
       <div className="grid cards" style={{ marginTop: 16 }}>
         {suggestedChallenges.map((challenge: Challenge) => <ChallengeCard key={challenge.id} challenge={challenge} token={token} onDone={() => location.reload()} />)}
         {recentIdeas.map((idea: Idea) => <IdeaCard key={idea.id} idea={idea} token={token} />)}
         {suggestedChallenges.length === 0 && recentIdeas.length === 0 && <EmptyState title="لا توجد عناصر جديدة حالياً" detail="ستظهر هنا التحديات والأفكار عند توفرها." />}
+      </div>
+    </>
+  );
+}
+
+function CenterManagerDashboard({ token }: { token: string }) {
+  const month = currentMonthValue();
+  const { data: summary } = useData<MonthlyReportsSummary>(`/monthly-reports/summary?month=${month}`, token, null);
+  const { items: reports } = usePaginatedData<MonthlyReportRow>(`/monthly-reports?month=${month}`, token, 5);
+  const { items: complaints } = usePaginatedData<Complaint>('/complaints', token, 10);
+  const pendingComplaints = complaints.filter((complaint) => complaint.centerReviewStatus === 'PENDING' || complaint.status === 'PENDING').length;
+  const hasMonthlyReport = reports.some((report) => report.month === month);
+  const alerts: AlertItem[] = [
+    !hasMonthlyReport ? { title: 'تقرير الشهر غير مرفوع', detail: `ارفع تقرير ${formatMonthArabic(month)} قبل نهاية الشهر.`, tone: 'danger', href: '/center/reports' } : { title: 'تقرير الشهر مرفوع', detail: 'تم تسجيل تقرير هذا الشهر بنجاح.', tone: 'success', href: '/center/reports' },
+    pendingComplaints > 0 ? { title: 'شكاوى قيد المراجعة', detail: `${pendingComplaints} طلب يحتاج مراجعة أو تحديث حالة.`, tone: 'warning', href: '/center/complaints' } : undefined,
+    summary?.latestUploads?.some((upload) => upload.status === 'REJECTED') ? { title: 'ملفات مرفوضة', detail: 'راجع آخر ملفات Excel المرفوضة وأعد رفعها.', tone: 'danger', href: '/center/reports' } : undefined
+  ].filter(Boolean) as AlertItem[];
+
+  return (
+    <>
+      <Header title="لوحة مركزك" subtitle="ملخص سريع للتقارير، الشكاوى، والتنبيهات الخاصة بالمركز." />
+      <div className="grid stats">
+        <Stat title="تقارير الشهر" value={reports.length} />
+        <Stat title="طلبات قيد المتابعة" value={pendingComplaints} />
+        <Stat title="إيرادات الشهر" value={formatMoney(summary?.totalRevenues || 0)} />
+      </div>
+      <div className="dashboard-grid" style={{ marginTop: 16 }}>
+        <AlertPanel title="تنبيهات تشغيلية" alerts={alerts} />
+        <NotificationsPanel items={(summary?.latestUploads || []).slice(0, 4).map((upload) => ({
+          title: upload.status === 'REJECTED' ? 'ملف مرفوض' : upload.status === 'ACCEPTED' ? 'ملف مقبول' : 'تحديث ملف',
+          detail: `${upload.originalName} - ${formatMonthArabic(upload.month)}`,
+          tone: upload.status === 'REJECTED' ? 'danger' : upload.status === 'ACCEPTED' ? 'success' : 'info',
+          href: '/center/reports'
+        }))} />
+      </div>
+      <div className="dashboard-grid" style={{ marginTop: 16 }}>
+        <MiniBarChart title="أداء الشهر" items={[
+          { label: 'الإيرادات', value: summary?.totalRevenues || 0, tone: 'success' },
+          { label: 'المصروفات', value: summary?.totalExpenses || 0, tone: 'warning' },
+          { label: 'المراكز المرفوعة', value: summary?.uploadedCenters || 0, tone: 'info' }
+        ]} valueLabel={(value) => formatMoney(value)} />
+        <section className="panel">
+          <h3>مسار تقرير الشهر</h3>
+          <AuditTimeline items={[
+            { title: 'اختيار الشهر', detail: formatMonthArabic(month), tone: 'info' },
+            { title: hasMonthlyReport ? 'تم الرفع' : 'بانتظار الرفع', detail: hasMonthlyReport ? 'التقرير موجود في النظام.' : 'ارفع ملف Excel من صفحة التقارير.', tone: hasMonthlyReport ? 'success' : 'warning' },
+            { title: 'مراجعة المديرية', detail: 'تابع أي ملاحظات أو رسائل من صفحة المحادثات.', tone: 'info' }
+          ]} />
+        </section>
       </div>
     </>
   );
@@ -442,6 +516,77 @@ function EmptyState({ title, detail }: { title: string; detail?: string }) {
   );
 }
 
+type AlertTone = 'info' | 'warning' | 'danger' | 'success';
+type AlertItem = { title: string; detail: string; tone?: AlertTone; href?: string };
+type TimelineItem = { title: string; detail?: string; tone?: AlertTone };
+
+function AlertPanel({ title, alerts }: { title: string; alerts: AlertItem[] }) {
+  return (
+    <section className="panel insight-panel">
+      <h3>{title}</h3>
+      <div className="insight-list">
+        {alerts.map((alert, index) => {
+          const content = (
+            <>
+              <span className={`insight-dot ${alert.tone || 'info'}`} aria-hidden />
+              <span>
+                <strong>{alert.title}</strong>
+                <small>{alert.detail}</small>
+              </span>
+            </>
+          );
+          return alert.href ? (
+            <Link key={`${alert.title}-${index}`} className="insight-row" href={alert.href}>{content}</Link>
+          ) : (
+            <div key={`${alert.title}-${index}`} className="insight-row">{content}</div>
+          );
+        })}
+        {alerts.length === 0 && <EmptyState title="لا توجد تنبيهات عاجلة" detail="كل المؤشرات الحالية مستقرة." />}
+      </div>
+    </section>
+  );
+}
+
+function NotificationsPanel({ items }: { items: AlertItem[] }) {
+  return <AlertPanel title="الإشعارات" alerts={items} />;
+}
+
+function AuditTimeline({ items }: { items: TimelineItem[] }) {
+  return (
+    <div className="audit-timeline">
+      {items.map((item, index) => (
+        <div className="audit-step" key={`${item.title}-${index}`}>
+          <span className={`audit-marker ${item.tone || 'info'}`} aria-hidden />
+          <div>
+            <strong>{item.title}</strong>
+            {item.detail && <small>{item.detail}</small>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MiniBarChart({ title, items, valueLabel }: { title: string; items: Array<{ label: string; value: number; tone?: AlertTone }>; valueLabel?: (value: number) => string }) {
+  const max = Math.max(1, ...items.map((item) => item.value));
+  return (
+    <section className="panel analytics-card">
+      <h3>{title}</h3>
+      <div className="analytics-bars">
+        {items.map((item) => (
+          <div className="analytics-bar-row" key={item.label}>
+            <span>{item.label}</span>
+            <div className="analytics-bar-track">
+              <i className={item.tone || 'info'} style={{ width: `${Math.max(4, (item.value / max) * 100)}%` }} />
+            </div>
+            <strong>{valueLabel ? valueLabel(item.value) : item.value}</strong>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function CentersPage({ token, admin }: { token: string; admin: boolean }) {
   const [selectedCenter, setSelectedCenter] = useState<Center | null>(null);
   const { items: centers, page, totalPages, setPage } = usePaginatedData<Center>('/centers', token, 24);
@@ -461,7 +606,7 @@ function CentersPage({ token, admin }: { token: string; admin: boolean }) {
         </div>
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
-      {selectedCenter && <CenterDetailsModal center={selectedCenter} admin={admin} token={token} onClose={() => setSelectedCenter(null)} />}
+      {selectedCenter && <CenterDetailsModal center={selectedCenter} admin={admin} token={token} metrics={metricsByCenter.get(selectedCenter.id)} onClose={() => setSelectedCenter(null)} />}
     </>
   );
 }
@@ -562,9 +707,16 @@ function CentersMapPage({ token }: { token: string }) {
   const markerLayerRef = useRef<import('leaflet').LayerGroup | null>(null);
   const [centers, setCenters] = useState<Center[]>([]);
   const [selectedArea, setSelectedArea] = useState('');
+  const [selectedCenter, setSelectedCenter] = useState<Center | null>(null);
+  const [mapQuery, setMapQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const areaGroups = useMemo(() => groupCentersForMap(centers), [centers]);
+  const filteredCenters = useMemo(() => {
+    const query = mapQuery.trim().toLowerCase();
+    if (!query) return centers;
+    return centers.filter((center) => `${center.name} ${center.location} ${center.type}`.toLowerCase().includes(query));
+  }, [centers, mapQuery]);
+  const areaGroups = useMemo(() => groupCentersForMap(filteredCenters), [filteredCenters]);
   const mapPoints = useMemo(() => centerMapPoints(areaGroups), [areaGroups]);
   const selectedGroup = areaGroups.find((group) => group.name === selectedArea) || areaGroups[0];
 
@@ -645,7 +797,10 @@ function CentersMapPage({ token }: { token: string }) {
         marker.bindPopup(
           `<div class="gps-popup" dir="rtl"><strong>${escapeHtml(point.center.name)}</strong><span>${escapeHtml(point.center.location)}</span></div>`
         );
-        marker.on('click', () => setSelectedArea(point.groupName));
+        marker.on('click', () => {
+          setSelectedArea(point.groupName);
+          setSelectedCenter(point.center);
+        });
         marker.addTo(markerLayerRef.current!);
         bounds.push([point.lat, point.lng]);
       });
@@ -681,10 +836,11 @@ function CentersMapPage({ token }: { token: string }) {
           <div className="map-directory-header">
             <div>
               <h3>{selectedGroup?.name || 'المناطق'}</h3>
-              <p className="muted">{selectedGroup ? `${selectedGroup.centers.length} مركز` : 'لا توجد بيانات'}</p>
+              <p className="muted">{selectedGroup ? `${selectedGroup.centers.length} مركز` : 'لا توجد بيانات'} | المعروض {filteredCenters.length} من {centers.length}</p>
             </div>
             <span className="badge">{areaGroups.length}</span>
           </div>
+          <input className="input map-search" type="search" value={mapQuery} onChange={(event) => setMapQuery(event.target.value)} placeholder="ابحث باسم المركز أو المنطقة" />
           <div className="map-area-list">
             {areaGroups.map((group) => (
               <button key={group.name} className={selectedGroup?.name === group.name ? 'active' : ''} type="button" onClick={() => setSelectedArea(group.name)}>
@@ -695,7 +851,12 @@ function CentersMapPage({ token }: { token: string }) {
           </div>
           <div className="map-centers-list">
             {(selectedGroup?.centers || []).map((center) => (
-              <article key={center.id} className="map-center-row">
+              <article key={center.id} className={`map-center-row ${selectedCenter?.id === center.id ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setSelectedCenter(center)} onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setSelectedCenter(center);
+                }
+              }}>
                 <div>
                   <h4>{center.name}</h4>
                   <p className="muted">{center.type}</p>
@@ -704,6 +865,11 @@ function CentersMapPage({ token }: { token: string }) {
               </article>
             ))}
           </div>
+          {selectedCenter && <div className="map-selected-center">
+            <strong>{selectedCenter.name}</strong>
+            <span>{selectedCenter.location}</span>
+            <p>{selectedCenter.description}</p>
+          </div>}
         </aside>
       </div>
     </>
@@ -822,7 +988,7 @@ function CenterCredentialReveal({ center, token }: { center: Center; token: stri
   );
 }
 
-function CenterDetailsModal({ center, admin, token, onClose }: { center: Center; admin: boolean; token: string; onClose: () => void }) {
+function CenterDetailsModal({ center, admin, token, metrics, onClose }: { center: Center; admin: boolean; token: string; metrics?: CenterMetrics; onClose: () => void }) {
 
   return (
     <div className="center-detail-backdrop" role="presentation" onClick={onClose}>
@@ -846,8 +1012,34 @@ function CenterDetailsModal({ center, admin, token, onClose }: { center: Center;
             <span>التقييم</span>
             <strong>{center.rating || '-'}</strong>
           </div>
+          <div>
+            <span>المستخدمون</span>
+            <strong>{metrics?.usersCount ?? 0}</strong>
+          </div>
+          <div>
+            <span>الفعاليات والتقارير</span>
+            <strong>{metrics?.eventsCount ?? 0}</strong>
+          </div>
+        </div>
+        <div className="center-profile-grid">
+          <div className="center-profile-block">
+            <span>ملخص تشغيلي</span>
+            <p>يعرض هذا الملف بيانات المركز، النشاط المرتبط به، ومؤشرات المتابعة التي تساعد المديرية على تقييم الأداء بسرعة.</p>
+          </div>
+          <div className="center-profile-block">
+            <span>مسار المتابعة</span>
+            <AuditTimeline items={[
+              { title: 'تسجيل المركز', detail: center.createdAt ? new Date(center.createdAt).toLocaleDateString('ar-EG') : 'موجود في قاعدة البيانات', tone: 'info' },
+              { title: metrics?.eventsCount ? 'نشاط مسجل' : 'بانتظار النشاط', detail: `${metrics?.eventsCount ?? 0} تقرير أو فعالية`, tone: metrics?.eventsCount ? 'success' : 'warning' },
+              { title: metrics?.usersCount ? 'حسابات مرتبطة' : 'لا توجد حسابات مستخدمين', detail: `${metrics?.usersCount ?? 0} مستخدم`, tone: metrics?.usersCount ? 'success' : 'info' }
+            ]} />
+          </div>
         </div>
         {admin && <CenterCredentialReveal center={center} token={token} />}
+        {admin && <div className="inline-actions center-profile-actions">
+          <Link className="btn primary" href={`/admin/chat?centerId=${center.id}`}>فتح محادثة المركز</Link>
+          <Link className="btn" href="/admin/reports">مراجعة التقارير</Link>
+        </div>}
         <div className="center-detail-description">
           <span>الوصف</span>
           <p>{center.description}</p>
@@ -1162,6 +1354,11 @@ function ChallengeCard({ challenge, token, admin, onDone }: { challenge: Challen
       <p className="muted">النطاق: {targetAreasText}</p>
       <p>{challenge.description}</p>
       <p><strong>{challenge.reward}</strong> نقطة | المشاركون {challenge._count?.participations ?? challenge.participants}</p>
+      <AuditTimeline items={[
+        { title: 'تم النشر', detail: challenge.category, tone: 'success' },
+        { title: challenge.status === 'ACTIVE' ? 'نشط' : 'قيد التجهيز', detail: challenge.location || targetAreasText, tone: challenge.status === 'ACTIVE' ? 'success' : 'warning' },
+        { title: 'الموعد النهائي', detail: new Date(challenge.deadline).toLocaleDateString('ar-EG'), tone: new Date(challenge.deadline).getTime() < Date.now() ? 'danger' : 'info' }
+      ]} />
       {!admin && challenge.joined && <button className="btn primary" disabled>تم الانضمام</button>}
       {!admin && !challenge.joined && !showJoin && <button className="btn primary" type="button" onClick={() => setShowJoin(true)}>انضم الآن</button>}
       {!admin && !challenge.joined && showJoin && <form className="challenge-join-form" onSubmit={join}>
@@ -1302,6 +1499,11 @@ function ComplaintCard({ complaint, token, admin, centerApproval, onDone, reject
       <p className="muted complaint-center-meta">المركز: {centerName} | المنطقة: {centerArea}</p>
       <p>{complaint.description}</p>
       <span className="badge">{complaintReviewLabel(complaint)}</span>
+      <AuditTimeline items={[
+        { title: 'تم الإنشاء', detail: new Date(complaint.createdAt).toLocaleDateString('ar-EG'), tone: 'info' },
+        { title: complaint.centerReviewStatus === 'PENDING' ? 'مراجعة المركز' : complaint.centerReviewStatus === 'REJECTED' ? 'رفض المركز' : 'اعتماد المركز', detail: centerName, tone: complaint.centerReviewStatus === 'REJECTED' ? 'danger' : complaint.centerReviewStatus === 'PENDING' ? 'warning' : 'success' },
+        { title: complaintStatusLabel(complaint.status), detail: complaint.resolvedAt ? new Date(complaint.resolvedAt).toLocaleDateString('ar-EG') : complaint.rejectedAt ? new Date(complaint.rejectedAt).toLocaleDateString('ar-EG') : 'قيد المتابعة', tone: complaint.status === 'REJECTED' ? 'danger' : complaint.status === 'RESOLVED' ? 'success' : 'info' }
+      ]} />
       {rejectedNote && <p className="muted rejected-complaint-note">{rejectedNote}</p>}
       {canReview && <div className="inline-actions" style={{ marginTop: 10 }}>
         <button className="btn primary" type="button" onClick={() => review('ACTIVE')}>قبول وبدء المعالجة</button>
@@ -1398,7 +1600,132 @@ function SettingsPage({ token, user, setUser, logout }: { token: string; user: U
   );
 }
 
-export function AdminPage({ section }: { section: 'dashboard' | 'users' | 'centers' | 'map' | 'ideas' | 'challenges' | 'complaints' | 'reports' | 'settings' }) {
+function formatChatTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('ar-EG', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+}
+
+function ChatPage({ token, currentUser, admin }: { token: string; currentUser: User; admin: boolean }) {
+  const searchParams = useSearchParams();
+  const { items: centers } = usePaginatedData<Center>('/centers', token, 100, '', admin);
+  const [thread, setThread] = useState<'all' | 'center'>('center');
+  const [selectedCenterId, setSelectedCenterId] = useState<number | undefined>();
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState('');
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const centerFromUrl = Number(searchParams.get('centerId'));
+    if (admin && Number.isInteger(centerFromUrl) && centerFromUrl > 0) {
+      setThread('center');
+      setSelectedCenterId(centerFromUrl);
+      return;
+    }
+    if (admin && !selectedCenterId && centers.length > 0) setSelectedCenterId(centers[0].id);
+  }, [admin, centers, searchParams, selectedCenterId]);
+
+  const activeCenter = centers.find((center) => center.id === selectedCenterId);
+  const canLoadPrivate = !admin || Boolean(selectedCenterId);
+  const chatPath = thread === 'all'
+    ? '/chat/messages?scope=all'
+    : admin && selectedCenterId
+      ? `/chat/messages?scope=center&centerId=${selectedCenterId}`
+      : '/chat/messages?scope=center';
+  const { data: messages, load } = useData<ChatMessage[]>(chatPath, token, [], thread === 'all' || canLoadPrivate);
+  const visibleMessages = messages || [];
+  const canSend = admin || thread === 'center';
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: 'end' });
+  }, [visibleMessages.length, thread, selectedCenterId]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      load();
+    }, 7000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
+  async function send(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!canSend) return;
+    setError('');
+    setSending(true);
+    try {
+      await api<ChatMessage>('/chat/messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          scope: thread,
+          centerId: admin && thread === 'center' ? selectedCenterId : undefined,
+          body: draft
+        })
+      }, token);
+      setDraft('');
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <>
+      <Header title={admin ? 'محادثات المراكز' : 'محادثة المديرية'} subtitle={admin ? 'أرسل رسالة لمركز محدد أو لجميع المراكز مرة واحدة.' : 'تابع رسائل المديرية ورد على محادثة مركزك.'} />
+      <section className="chat-layout">
+        <aside className="panel chat-sidebar">
+          <div className="chat-thread-tabs" role="tablist" aria-label="Chat threads">
+            <button className={`btn ${thread === 'center' ? 'primary' : ''}`} type="button" onClick={() => setThread('center')}>مركز محدد</button>
+            <button className={`btn ${thread === 'all' ? 'primary' : ''}`} type="button" onClick={() => setThread('all')}>كل المراكز</button>
+          </div>
+          {admin && thread === 'center' && (
+            <label className="form-group">
+              المركز
+              <select className="select" value={selectedCenterId || ''} onChange={(event) => setSelectedCenterId(Number(event.target.value) || undefined)}>
+                {centers.map((center) => <option key={center.id} value={center.id}>{center.name} - {center.location}</option>)}
+              </select>
+            </label>
+          )}
+          <div className="chat-thread-summary">
+            <span>{thread === 'all' ? 'رسالة عامة' : 'محادثة خاصة'}</span>
+            <strong>{thread === 'all' ? 'كل المراكز' : admin ? activeCenter?.name || 'اختر مركزا' : 'مركزك'}</strong>
+            <p className="muted">{thread === 'all' ? 'تظهر هذه الرسائل لجميع مسؤولي المراكز.' : 'هذه المحادثة مرئية للمديرية والمركز فقط.'}</p>
+          </div>
+        </aside>
+        <section className="panel chat-panel">
+          <div className="chat-messages" aria-live="polite">
+            {visibleMessages.map((message) => {
+              const own = message.senderId === currentUser.id;
+              return (
+                <article key={message.id} className={`chat-message ${own ? 'own' : ''}`}>
+                  <div className="chat-bubble">
+                    <div className="chat-message-meta">
+                      <strong>{message.sender?.name || (message.senderRole === 'DIRECTORATE_MANAGER' ? 'المديرية' : 'المركز')}</strong>
+                      <span>{formatChatTime(message.createdAt)}</span>
+                    </div>
+                    <p>{message.body}</p>
+                  </div>
+                </article>
+              );
+            })}
+            {visibleMessages.length === 0 && <EmptyState title="لا توجد رسائل بعد" detail={thread === 'all' ? 'ابدأ بإرسال إعلان لجميع المراكز.' : 'ابدأ محادثة مباشرة مع المركز.'} />}
+            <div ref={bottomRef} />
+          </div>
+          <form className="chat-composer" onSubmit={send}>
+            <textarea className="textarea" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={canSend ? 'اكتب رسالتك...' : 'الرد متاح في محادثة المركز الخاصة فقط'} disabled={!canSend || sending} maxLength={2000} required />
+            <button className="btn primary" type="submit" disabled={!canSend || sending || !draft.trim()}>{sending ? 'جار الإرسال...' : 'إرسال'}</button>
+          </form>
+          {!canSend && <p className="muted chat-note">الرسائل العامة للقراءة فقط لمسؤولي المراكز. استخدم محادثة المركز للرد على المديرية.</p>}
+          {error && <p className="error">{error}</p>}
+        </section>
+      </section>
+    </>
+  );
+}
+
+export function AdminPage({ section }: { section: 'dashboard' | 'users' | 'centers' | 'map' | 'ideas' | 'challenges' | 'complaints' | 'reports' | 'chat' | 'settings' }) {
   const router = useRouter();
   const { token, user, setUser, ready, logout } = useSession(true);
   const allowed = user && canManageAccounts(user.role);
@@ -1420,6 +1747,7 @@ export function AdminPage({ section }: { section: 'dashboard' | 'users' | 'cente
       {allowed && section === 'challenges' && <ChallengesPage token={token} admin />}
       {allowed && section === 'complaints' && <ComplaintsPage token={token} admin />}
       {allowed && section === 'reports' && <ReportsAdmin token={token} currentUser={user} />}
+      {allowed && section === 'chat' && <ChatPage token={token} currentUser={user} admin />}
       {allowed && section === 'settings' && <SettingsPage token={token} user={user} setUser={setUser} logout={logout} />}
     </Shell>
   );
@@ -1427,18 +1755,54 @@ export function AdminPage({ section }: { section: 'dashboard' | 'users' | 'cente
 
 function AdminDashboard({ token }: { token: string }) {
   const { data } = useData<any>('/stats/admin', token);
+  const month = currentMonthValue();
+  const { data: summary } = useData<MonthlyReportsSummary>(`/monthly-reports/summary?month=${month}`, token, null);
+  const missingReports = summary?.missingCentersTotal || 0;
+  const rejectedUploads = (summary?.latestUploads || []).filter((upload) => upload.status === 'REJECTED').length;
+  const alerts: AlertItem[] = [
+    missingReports > 0 ? { title: 'تقارير شهرية ناقصة', detail: `${missingReports} مركز لم يرفع تقرير ${formatMonthArabic(month)}.`, tone: 'danger', href: '/admin/reports' } : { title: 'التقارير مكتملة', detail: 'لا توجد تقارير شهرية ناقصة في الصفحة الحالية.', tone: 'success', href: '/admin/reports' },
+    rejectedUploads > 0 ? { title: 'ملفات Excel مرفوضة', detail: `${rejectedUploads} ملف يحتاج مراجعة من آخر الرفعات.`, tone: 'warning', href: '/admin/reports' } : undefined,
+    data?.newComplaints > 0 ? { title: 'شكاوى جديدة', detail: `${data.newComplaints} شكوى تحتاج معالجة.`, tone: 'warning', href: '/admin/complaints' } : undefined,
+    data?.pendingIdeas > 0 ? { title: 'أفكار معلقة', detail: `${data.pendingIdeas} فكرة بانتظار قرار النشر.`, tone: 'info', href: '/admin/ideas' } : undefined
+  ].filter(Boolean) as AlertItem[];
   return (
     <>
-      <Header title="الإحصائيات العامة" subtitle="نظرة تشغيلية على المنصة." />
+      <Header title="لوحة تشغيل المديرية" subtitle="نظرة فورية على التقارير، الشكاوى، النشاط، والتنبيهات." />
       <div className="grid stats">
         <Stat title="المستخدمون" value={data?.totalUsers || 0} />
         <Stat title="المراكز" value={data?.activeCenters || 0} />
-        <Stat title="الأفكار المعلقة" value={data?.pendingIdeas || 0} />
-        <Stat title="الشكاوى الجديدة" value={data?.newComplaints || 0} />
+        <Stat title="أفكار معلقة" value={data?.pendingIdeas || 0} />
+        <Stat title="شكاوى جديدة" value={data?.newComplaints || 0} />
       </div>
-      <div className="panel" style={{ marginTop: 16 }}>
+      <div className="dashboard-grid" style={{ marginTop: 16 }}>
+        <AlertPanel title="تنبيهات تشغيلية" alerts={alerts} />
+        <NotificationsPanel items={(summary?.latestUploads || []).slice(0, 5).map((upload) => ({
+          title: upload.status === 'REJECTED' ? 'رفع مرفوض' : upload.status === 'ACCEPTED' ? 'رفع مقبول' : 'تحديث تقرير',
+          detail: `${upload.centerName || 'مركز'} - ${formatMonthArabic(upload.month)} - ${upload.originalName}`,
+          tone: upload.status === 'REJECTED' ? 'danger' : upload.status === 'ACCEPTED' ? 'success' : 'info',
+          href: '/admin/reports'
+        }))} />
+      </div>
+      <div className="dashboard-grid" style={{ marginTop: 16 }}>
+        <MiniBarChart title="مؤشرات الشهر" items={[
+          { label: 'المراكز الرافعة', value: summary?.uploadedCenters || 0, tone: 'success' },
+          { label: 'المراكز الناقصة', value: missingReports, tone: missingReports ? 'danger' : 'success' },
+          { label: 'الشكاوى الجديدة', value: data?.newComplaints || 0, tone: 'warning' },
+          { label: 'الأفكار المعلقة', value: data?.pendingIdeas || 0, tone: 'info' }
+        ]} />
+        <MiniBarChart title="آخر 6 أشهر" items={(summary?.monthlyStatistics || []).map((item) => ({
+          label: formatMonthArabic(item.month),
+          value: item.uploadedCenters,
+          tone: 'info'
+        }))} />
+      </div>
+      <div className="panel activity-panel" style={{ marginTop: 16 }}>
         <h3>أحدث النشاطات</h3>
-        {(data?.recentActivities || []).map((activity: Activity) => <p key={activity.id} className="muted">{activity.action} - {activity.userName || 'النظام'}</p>)}
+        <AuditTimeline items={(data?.recentActivities || []).map((activity: Activity) => ({
+          title: activity.action,
+          detail: activity.userName || 'النظام',
+          tone: 'info'
+        }))} />
       </div>
     </>
   );
@@ -1802,6 +2166,12 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
     }
   }
 
+  const reportAlerts: AlertItem[] = [
+    (summary?.missingCentersTotal || 0) > 0 ? { title: 'مراكز لم ترفع التقرير', detail: `${summary?.missingCentersTotal || 0} مركز لم يرفع تقرير ${formatMonthArabic(month)}.`, tone: 'danger' } : { title: 'اكتمل الرفع', detail: 'لا توجد مراكز متأخرة في الصفحة الحالية.', tone: 'success' },
+    (summary?.latestUploads || []).some((upload) => upload.status === 'REJECTED') ? { title: 'ملفات مرفوضة', detail: 'توجد ملفات Excel مرفوضة تحتاج إعادة رفع.', tone: 'warning' } : undefined,
+    reports.length > 0 ? { title: 'سجل تدقيق متاح', detail: 'يمكنك متابعة الرفع والاستبدال من آخر الملفات والنشاطات.', tone: 'info' } : undefined
+  ].filter(Boolean) as AlertItem[];
+
   return (
     <>
       <Header title="التقارير الشهرية" subtitle="رفع ملف Excel للمركز وتجميع بيانات الشهر تلقائياً." />
@@ -1830,6 +2200,14 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
         <Stat title="إجمالي المصروفات" value={formatMoney(summary?.totalExpenses || 0)} />
         <Stat title="المراكز التي رفعت" value={summary?.uploadedCenters || 0} />
         <Stat title="إجمالي الندوات" value={summary?.totalSeminars || 0} />
+      </div>
+
+      <div className="dashboard-grid" style={{ marginTop: 16 }}>
+        <AlertPanel title="تنبيهات التقارير" alerts={reportAlerts} />
+        <MiniBarChart title="تحليل مالي للشهر" items={[
+          { label: 'الإيرادات', value: summary?.totalRevenues || 0, tone: 'success' },
+          { label: 'المصروفات', value: summary?.totalExpenses || 0, tone: 'warning' }
+        ]} valueLabel={(value) => formatMoney(value)} />
       </div>
 
       <div className="panel table-wrap" style={{ marginTop: 16 }}>
@@ -1875,7 +2253,12 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
         </div>
         <div className="panel">
           <h3>أحدث عمليات الرفع</h3>
-          {(summary?.latestUploads || []).map((upload) => <p key={upload.id} className="muted">{upload.originalName} - {formatMonthArabic(upload.month)} - {upload.status} - {upload.centerName || '-'}</p>)}
+          <AuditTimeline items={(summary?.latestUploads || []).map((upload) => ({
+            title: upload.status === 'REJECTED' ? 'ملف مرفوض' : upload.status === 'ACCEPTED' ? 'ملف مقبول' : 'تحديث ملف',
+            detail: `${upload.centerName || '-'} - ${formatMonthArabic(upload.month)} - ${upload.originalName}`,
+            tone: upload.status === 'REJECTED' ? 'danger' : upload.status === 'ACCEPTED' ? 'success' : 'info'
+          }))} />
+          {(summary?.latestUploads || []).length === 0 && <EmptyState title="لا توجد عمليات رفع حديثة" detail="ستظهر هنا آخر الملفات المرفوعة." />}
         </div>
       </div>
     </>
