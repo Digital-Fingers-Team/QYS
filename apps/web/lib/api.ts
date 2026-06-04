@@ -80,3 +80,4 @@ export async function downloadApi(path: string, token?: string) {
   const match = disposition.match(/filename="([^"]+)"/);
   return { blob, filename: safeDownloadName(match?.[1] || 'download.xlsx') };
 }
+ 

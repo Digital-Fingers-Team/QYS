@@ -190,16 +190,16 @@ function navIconFor(href: string) {
 }
 
 function statIconFor(title: string) {
-  if (title.includes('مستخدم')) return 'U';
-  if (title.includes('مركز') || title.includes('المراكز')) return 'C';
-  if (title.includes('فكر')) return 'I';
-  if (title.includes('تحد')) return 'T';
-  if (title.includes('شك')) return '!';
-  if (title.includes('تصويت')) return 'V';
-  if (title.includes('إيراد')) return '$';
-  if (title.includes('مصروف')) return 'E';
-  if (title.includes('ندوات')) return 'N';
-  return 'D';
+  if (title.includes('مستخدم')) return <NavSvg><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" /><circle cx="9.5" cy="7" r="4" /><path d="M19 8v6" /><path d="M22 11h-6" /></NavSvg>;
+  if (title.includes('مركز') || title.includes('المراكز')) return <NavSvg><path d="M3 21h18" /><path d="M5 21V7l7-4 7 4v14" /><path d="M9 21v-6h6v6" /></NavSvg>;
+  if (title.includes('فكر')) return <NavSvg><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12.74V17h8v-2.26A7 7 0 0 0 12 2Z" /></NavSvg>;
+  if (title.includes('تحد')) return <NavSvg><path d="M8 21h8" /><path d="M12 17v4" /><path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" /><path d="M5 6H3a4 4 0 0 0 4 4" /><path d="M19 6h2a4 4 0 0 1-4 4" /></NavSvg>;
+  if (title.includes('شك') || title.includes('طلب')) return <NavSvg><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" /><path d="M12 7v5" /><path d="M12 15h.01" /></NavSvg>;
+  if (title.includes('تصويت')) return <NavSvg><path d="M9 12l2 2 4-5" /><path d="M21 12a9 9 0 1 1-9-9" /><path d="M17 3h4v4" /></NavSvg>;
+  if (title.includes('إيراد')) return <NavSvg><path d="M3 17l6-6 4 4 8-8" /><path d="M14 7h7v7" /></NavSvg>;
+  if (title.includes('مصروف')) return <NavSvg><path d="M3 7l6 6 4-4 8 8" /><path d="M14 17h7v-7" /></NavSvg>;
+  if (title.includes('ندوات')) return <NavSvg><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15Z" /><path d="M8 7h8" /><path d="M8 11h8" /></NavSvg>;
+  return navIconFor('/admin');
 }
 
 function userInitial(user: User) {
@@ -285,7 +285,7 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
               <span>{text}</span>
             </Link>
           ))}
-          {canOpenAdmin(user.role) && !admin && <Link className="nav-link" href="/admin"><span className="nav-icon" aria-hidden>D</span><span>لوحة الإدارة</span></Link>}
+          {canOpenAdmin(user.role) && !admin && <Link className="nav-link" href="/admin"><span className="nav-icon" aria-hidden>{navIconFor('/admin')}</span><span>لوحة الإدارة</span></Link>}
         </nav>
       </aside>
       <main className="main-content">
@@ -355,6 +355,8 @@ export function CenterPage({ section }: { section: 'reports' | 'map' | 'ideas' |
 
 function UserDashboard({ token }: { token: string }) {
   const { data } = useData<any>('/stats/me', token);
+  const suggestedChallenges = data?.suggestedChallenges || [];
+  const recentIdeas = data?.recentIdeas || [];
   return (
     <>
       <Header title="أهلاً بك في منصتك الرياضية" subtitle="تابع نشاطك وشارك في الخدمات المتاحة." />
@@ -364,8 +366,9 @@ function UserDashboard({ token }: { token: string }) {
         <Stat title="طلباتي" value={data?.complaints || 0} />
       </div>
       <div className="grid cards" style={{ marginTop: 16 }}>
-        {(data?.suggestedChallenges || []).map((challenge: Challenge) => <ChallengeCard key={challenge.id} challenge={challenge} token={token} onDone={() => location.reload()} />)}
-        {(data?.recentIdeas || []).map((idea: Idea) => <IdeaCard key={idea.id} idea={idea} token={token} />)}
+        {suggestedChallenges.map((challenge: Challenge) => <ChallengeCard key={challenge.id} challenge={challenge} token={token} onDone={() => location.reload()} />)}
+        {recentIdeas.map((idea: Idea) => <IdeaCard key={idea.id} idea={idea} token={token} />)}
+        {suggestedChallenges.length === 0 && recentIdeas.length === 0 && <EmptyState title="لا توجد عناصر جديدة حالياً" detail="ستظهر هنا التحديات والأفكار عند توفرها." />}
       </div>
     </>
   );
@@ -379,6 +382,15 @@ function Stat({ title, value }: { title: string; value: number | string }) {
         <h3>{value}</h3>
         <p>{title}</p>
       </div>
+    </div>
+  );
+}
+
+function EmptyState({ title, detail }: { title: string; detail?: string }) {
+  return (
+    <div className="empty-state">
+      <strong>{title}</strong>
+      {detail && <span>{detail}</span>}
     </div>
   );
 }
@@ -398,6 +410,7 @@ function CentersPage({ token, admin }: { token: string; admin: boolean }) {
       <div className="panel centers-directory" style={{ marginTop: 16 }}>
         <div className="centers-directory-list">
           {centers.map((center) => <CenterDirectoryRow key={center.id} center={center} admin={admin} metrics={metricsByCenter.get(center.id)} onSelect={() => setSelectedCenter(center)} />)}
+          {centers.length === 0 && <EmptyState title="لا توجد مراكز للعرض" detail="عند إضافة المراكز ستظهر في هذا الدليل." />}
         </div>
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
@@ -838,6 +851,7 @@ function IdeasPage({ token, admin, viewOnly = false, centerApproval = false }: {
       {message && <p className={message.startsWith('تم ') ? 'muted' : 'error'}>{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
         {ideas.map((idea) => <IdeaCard key={idea.id} idea={idea} token={token} readOnly={readOnly} admin={admin} centerApproval={centerApproval} onDone={load} />)}
+        {ideas.length === 0 && <EmptyState title="لا توجد أفكار للعرض" detail={readOnly ? 'ستظهر الأفكار بعد إرسالها أو اعتمادها.' : 'ابدأ بإرسال فكرة جديدة للمراجعة.'} />}
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
@@ -966,6 +980,7 @@ function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
       {message && <p className="error">{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
         {challenges.map((challenge) => <ChallengeCard key={challenge.id} challenge={challenge} token={token} admin={admin} onDone={load} />)}
+        {challenges.length === 0 && <EmptyState title="لا توجد تحديات للعرض" detail={admin ? 'استخدم زر إضافة تحدي لإنشاء أول تحدي.' : 'ستظهر التحديات المتاحة هنا عند نشرها.'} />}
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
@@ -1100,6 +1115,7 @@ function ComplaintsPage({ token, admin, viewOnly = false, centerApproval = false
       {message && <p className={message.startsWith('تم ') ? 'muted' : 'error'}>{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
         {complaints.map((complaint) => <ComplaintCard key={complaint.id} complaint={complaint} token={token} admin={admin} centerApproval={centerApproval} onDone={load} />)}
+        {complaints.length === 0 && <EmptyState title="لا توجد شكاوى للعرض" detail={readOnly ? 'ستظهر الطلبات عند وصولها أو اعتمادها.' : 'يمكنك إرسال شكوى أو مقترح من النموذج بالأعلى.'} />}
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
     </>
@@ -1424,7 +1440,9 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
                 </div>
               </td>
             </tr>;
-          })}</tbody>
+          })}
+          {users.length === 0 && <tr><td colSpan={6}><EmptyState title="لا يوجد مستخدمون للعرض" detail="ستظهر الحسابات هنا بعد إضافتها." /></td></tr>}
+          </tbody>
         </table>
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
@@ -1481,7 +1499,9 @@ function CenterUsersPage({ token }: { token: string }) {
             <td>{roleLabel(user.role)}</td>
             <td><span className="badge">{user.isActive ? 'نشط' : 'معطل'}</span></td>
             <td>{user.lastLogin ? new Date(user.lastLogin).toLocaleDateString('ar-EG') : '-'}</td>
-          </tr>)}</tbody>
+          </tr>)}
+          {users.length === 0 && <tr><td colSpan={5}><EmptyState title="لا يوجد مستخدمون للمركز" detail="أضف أول مستخدم ليظهر في هذه القائمة." /></td></tr>}
+          </tbody>
         </table>
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
@@ -1664,7 +1684,9 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
             <td>{formatMoney(report.expenses)}</td>
             <td>{report.seminarsCount}</td>
             <td>{report.sourceFileName || '-'}</td>
-          </tr>)}</tbody>
+          </tr>)}
+          {reports.length === 0 && <tr><td colSpan={7}><EmptyState title="لا توجد تقارير لهذا الشهر" detail="ارفع ملف Excel أو اختر شهر آخر." /></td></tr>}
+          </tbody>
         </table>
       </div>
       <PaginationControls page={reportsPage} totalPages={reportsTotalPages} setPage={setReportsPage} />
@@ -1679,7 +1701,9 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
             <td>{formatMoney(item.totalExpenses)}</td>
             <td>{item.totalSeminars}</td>
             <td>{item.uploadedCenters}</td>
-          </tr>)}</tbody>
+          </tr>)}
+          {(summary?.monthlyStatistics || []).length === 0 && <tr><td colSpan={5}><EmptyState title="لا توجد إحصائيات شهرية بعد" detail="ستظهر الإحصائيات بعد رفع التقارير." /></td></tr>}
+          </tbody>
         </table>
       </div>
 
