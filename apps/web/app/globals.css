@@ -3224,24 +3224,32 @@ tr:hover td {
   line-height: 1;
 }
 
-.auth-social-linkedin {
-  width: 19px;
-  height: 19px;
-  border: 2px solid currentColor;
-  font-size: 0.82rem;
-}
-
-.auth-social-x {
-  font-size: 1.38rem;
-  font-weight: 600;
-}
-
 .auth-social-facebook {
   width: 19px;
   height: 19px;
   border: 2px solid currentColor;
   font-size: 1.18rem;
   font-weight: 900;
+}
+
+.dashboard-facebook-link {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 1px solid #d8cfbd;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--primary-dark);
+}
+
+.dashboard-facebook-link:hover,
+.dashboard-facebook-link:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline: none;
 }
 
 .fade-in {

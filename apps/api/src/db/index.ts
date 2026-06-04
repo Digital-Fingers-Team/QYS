@@ -183,6 +183,13 @@ export interface UploadHistoryRecord {
   createdAt: Date;
 }
 
+export interface IdeaVoteRecord {
+  id: number;
+  ideaId: number;
+  userId: number;
+  createdAt: Date;
+}
+
 export interface ChatMessageRecord {
   id: number;
   target: "ALL" | "CENTER";
@@ -230,12 +237,12 @@ type CreateUploadedFileInput = Omit<UploadedFileRecord, "id" | "uploadedAt"> & {
 type CreateUploadHistoryInput = Omit<UploadHistoryRecord, "id" | "createdAt"> & { createdAt?: Date };
 type CreateChatMessageInput = Omit<ChatMessageRecord, "id" | "createdAt"> & { createdAt?: Date };
 type ChallengeListItem = ChallengeRecord & { _count: { participations: number }; joined?: boolean };
-type IdeaListItem = IdeaRecord & { user: { name: string } };
+type IdeaListItem = IdeaRecord & { user: { name: string }; voted?: boolean };
 type ComplaintListItem = ComplaintRecord & { user: { name: string }; center?: { name: string; location: string } | null };
 type ChatMessageListItem = ChatMessageRecord & { sender?: { name: string }; center?: { name: string; location: string } | null };
 type PageFilter = Pick<PaginationQueryInput, "page" | "pageSize">;
 type ListFilter = { q?: string; page?: number; pageSize?: number };
-type IdeaListFilter = ListFilter & { userId?: number; centerId?: number; statuses?: string[]; includeUserId?: number; visibleToUsers?: boolean };
+type IdeaListFilter = ListFilter & { userId?: number; centerId?: number; statuses?: string[]; includeUserId?: number; visibleToUsers?: boolean; voterId?: number };
 type ComplaintListFilter = ListFilter & { userId?: number; centerId?: number; centerReviewStatus?: string; includeLegacyApproved?: boolean; visibleToUser?: boolean };
 
 const counterSchema = new Schema<CounterRecord>({ key: { type: String, required: true, unique: true }, seq: { type: Number, required: true, default: 0 } }, { versionKey: false });
@@ -340,6 +347,18 @@ mongoIdeaSchema.index({ userId: 1, createdAt: -1 });
 mongoIdeaSchema.index({ centerId: 1, status: 1, createdAt: -1 });
 mongoIdeaSchema.index({ visibleToUsers: 1, status: 1, createdAt: -1 });
 mongoIdeaSchema.index({ status: 1, createdAt: -1 });
+
+const mongoIdeaVoteSchema = new Schema<IdeaVoteRecord>(
+  {
+    id: { type: Number, required: true, unique: true },
+    ideaId: { type: Number, required: true },
+    userId: { type: Number, required: true },
+    createdAt: { type: Date, default: () => new Date(), required: true }
+  },
+  { versionKey: false }
+);
+mongoIdeaVoteSchema.index({ ideaId: 1, userId: 1 }, { unique: true });
+mongoIdeaVoteSchema.index({ userId: 1, createdAt: -1 });
 
 const mongoComplaintSchema = new Schema<ComplaintRecord>(
   {
@@ -474,6 +493,7 @@ const MongoCenter = getOrCreateModel<CenterRecord>("Center", mongoCenterSchema);
 const MongoChallenge = getOrCreateModel<ChallengeRecord>("Challenge", mongoChallengeSchema);
 const MongoChallengeParticipation = getOrCreateModel<ChallengeParticipationRecord>("ChallengeParticipation", mongoChallengeParticipationSchema);
 const MongoIdea = getOrCreateModel<IdeaRecord>("Idea", mongoIdeaSchema);
+const MongoIdeaVote = getOrCreateModel<IdeaVoteRecord>("IdeaVote", mongoIdeaVoteSchema);
 const MongoComplaint = getOrCreateModel<ComplaintRecord>("Complaint", mongoComplaintSchema);
 const MongoActivity = getOrCreateModel<ActivityRecord>("Activity", mongoActivitySchema);
 const MongoReport = getOrCreateModel<ReportRecord>("Report", mongoReportSchema);
@@ -927,9 +947,14 @@ export const db = {
       const where = ideaWhere(filter);
       const ideas = (await MongoIdea.find(where, { _id: 0 }).sort({ createdAt: -1 }).lean().exec()) as IdeaRecord[];
       const userIds = [...new Set(ideas.map((idea) => idea.userId))];
-      const users = (await MongoUser.find({ id: mongoIn(userIds) }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>;
+      const ideaIds = ideas.map((idea) => idea.id);
+      const [users, votes] = await Promise.all([
+        userIds.length ? MongoUser.find({ id: mongoIn(userIds) }, { _id: 0, id: 1, name: 1 }).lean().exec() : [],
+        filter?.voterId && ideaIds.length ? MongoIdeaVote.find({ userId: filter.voterId, ideaId: mongoIn(ideaIds) }, { _id: 0, ideaId: 1 }).lean().exec() : []
+      ]);
       const names = new Map(users.map((user) => [user.id, user.name]));
-      return ideas.map((idea) => ({ ...idea, user: { name: names.get(idea.userId) ?? "Unknown" } }));
+      const votedIds = new Set((votes as Array<Pick<IdeaVoteRecord, "ideaId">>).map((vote) => vote.ideaId));
+      return ideas.map((idea) => ({ ...idea, user: { name: names.get(idea.userId) ?? "Unknown" }, voted: votedIds.has(idea.id) }));
     },
     async listPage(filter?: IdeaListFilter): Promise<Paginated<IdeaListItem>> {
       await ensureMongoConnected();
@@ -940,11 +965,14 @@ export const db = {
         MongoIdea.countDocuments(where).exec()
       ]);
       const userIds = [...new Set((ideas as IdeaRecord[]).map((idea) => idea.userId))];
-      const users = userIds.length
-        ? ((await MongoUser.find({ id: mongoIn(userIds) }, { _id: 0, id: 1, name: 1 }).lean().exec()) as Array<Pick<UserRecord, "id" | "name">>)
-        : [];
+      const ideaIds = (ideas as IdeaRecord[]).map((idea) => idea.id);
+      const [users, votes] = await Promise.all([
+        userIds.length ? MongoUser.find({ id: mongoIn(userIds) }, { _id: 0, id: 1, name: 1 }).lean().exec() : [],
+        filter?.voterId && ideaIds.length ? MongoIdeaVote.find({ userId: filter.voterId, ideaId: mongoIn(ideaIds) }, { _id: 0, ideaId: 1 }).lean().exec() : []
+      ]);
       const names = new Map(users.map((user) => [user.id, user.name]));
-      const items = (ideas as IdeaRecord[]).map((idea) => ({ ...idea, user: { name: names.get(idea.userId) ?? "Unknown" } }));
+      const votedIds = new Set((votes as Array<Pick<IdeaVoteRecord, "ideaId">>).map((vote) => vote.ideaId));
+      const items = (ideas as IdeaRecord[]).map((idea) => ({ ...idea, user: { name: names.get(idea.userId) ?? "Unknown" }, voted: votedIds.has(idea.id) }));
       return paginated(items, total, page, pageSize);
     },
     async create(data: IdeaInput, userId: number, centerId?: number | null): Promise<IdeaRecord> {
@@ -953,16 +981,38 @@ export const db = {
       cache.invalidate("stats");
       return idea.toObject() as unknown as IdeaRecord;
     },
-    async vote(id: number): Promise<IdeaRecord> {
+    async vote(id: number, userId?: number): Promise<IdeaListItem> {
       await ensureMongoConnected();
+      if (!userId) {
+        const idea = (await MongoIdea.findOneAndUpdate(
+          { id, status: mongoIn(["ACTIVE", "RESOLVED"]), $or: [{ visibleToUsers: true }, { visibleToUsers: mongoExists(false) }] },
+          { $inc: { votes: 1 } },
+          { new: true, projection: { _id: 0 } }
+        ).lean().exec()) as IdeaRecord | null;
+        if (!idea) throw new ApiError(404, "Idea not found or not published", "IDEA_NOT_PUBLISHED");
+        cache.invalidate("stats");
+        const [item] = await db.ideas.list({ userId: idea.userId });
+        return item ? { ...idea, user: item.user } : { ...idea, user: { name: "Unknown" } };
+      }
+      const exists = (await MongoIdea.exists({ id, status: mongoIn(["ACTIVE", "RESOLVED"]), $or: [{ visibleToUsers: true }, { visibleToUsers: mongoExists(false) }] }).exec());
+      if (!exists) throw new ApiError(404, "Idea not found or not published", "IDEA_NOT_PUBLISHED");
+      try {
+        await MongoIdeaVote.create({ id: await nextId("idea_votes"), ideaId: id, userId });
+      } catch (error: unknown) {
+        if (typeof error === "object" && error !== null && "code" in error && (error as { code?: number }).code === 11000) {
+          throw new ApiError(409, "You already voted for this idea.", "IDEA_ALREADY_VOTED");
+        }
+        throw error;
+      }
       const idea = (await MongoIdea.findOneAndUpdate(
-        { id, status: mongoIn(["ACTIVE", "RESOLVED"]), $or: [{ visibleToUsers: true }, { visibleToUsers: mongoExists(false) }] },
+        { id },
         { $inc: { votes: 1 } },
         { new: true, projection: { _id: 0 } }
       ).lean().exec()) as IdeaRecord | null;
-      if (!idea) throw new ApiError(404, "Idea not found or not published", "IDEA_NOT_PUBLISHED");
+      if (!idea) throw new ApiError(404, "Idea not found", "IDEA_NOT_FOUND");
       cache.invalidate("stats");
-      return idea;
+      const [item] = await db.ideas.list({ userId: idea.userId, voterId: userId });
+      return item ? { ...idea, user: item.user, voted: true } : { ...idea, user: { name: "Unknown" }, voted: true };
     },
     async updateStatus(id: number, status: string): Promise<IdeaRecord> {
       await ensureMongoConnected();

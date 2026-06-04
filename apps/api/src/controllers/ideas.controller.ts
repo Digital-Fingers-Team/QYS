@@ -19,7 +19,8 @@ export const ideasController = {
         : req.user && isAdminRole(req.user.role)
           ? {}
           : { statuses: publishedIdeaStatuses, visibleToUsers: true };
-    res.json(wantsPaginated(req) ? await db.ideas.listPage({ ...filter, page: query.page, pageSize: query.pageSize }) : await db.ideas.list(filter));
+    const voterId = req.user?.role === "USER" ? req.user.userId : undefined;
+    res.json(wantsPaginated(req) ? await db.ideas.listPage({ ...filter, voterId, page: query.page, pageSize: query.pageSize }) : await db.ideas.list({ ...filter, voterId }));
   },
   create: async (req: AuthedRequest, res: Response) => {
     if (req.user?.role !== "USER") throw new ApiError(403, "Only user accounts can submit ideas.", "IDEA_SUBMIT_USER_ONLY");
@@ -29,7 +30,8 @@ export const ideasController = {
     res.status(201).json(idea);
   },
   vote: async (req: AuthedRequest, res: Response) => {
-    const idea = await db.ideas.vote(idParam(req));
+    if (req.user?.role !== "USER") throw new ApiError(403, "Only user accounts can vote for ideas.", "IDEA_VOTE_USER_ONLY");
+    const idea = await db.ideas.vote(idParam(req), req.user.userId);
     await db.activities.create(`Voted for idea #${idParam(req)}`, req.user?.userId);
     res.json(idea);
   },
