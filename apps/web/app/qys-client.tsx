@@ -95,6 +95,53 @@ function CenterSelect({ centers, defaultValue = '', required = false }: { center
   );
 }
 
+const authSocialActions: Array<{ label: string; href?: string; icon: 'link' | 'mail' | 'linkedin' | 'x' | 'facebook' | 'plus' }> = [
+  { label: 'Link', href: '/', icon: 'link' },
+  { label: 'Email', href: 'mailto:', icon: 'mail' },
+  { label: 'LinkedIn', href: 'https://www.linkedin.com', icon: 'linkedin' },
+  { label: 'X', href: 'https://x.com', icon: 'x' },
+  { label: 'Facebook', href: 'https://www.facebook.com', icon: 'facebook' },
+  { label: 'More', icon: 'plus' }
+];
+
+function AuthSocialIcon({ icon }: { icon: (typeof authSocialActions)[number]['icon'] }) {
+  if (icon === 'link') {
+    return <NavSvg><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L10.9 5.03" /><path d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 0 0 7.07 7.07l1.22-1.22" /></NavSvg>;
+  }
+  if (icon === 'mail') {
+    return <NavSvg><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></NavSvg>;
+  }
+  if (icon === 'linkedin') {
+    return <span className="auth-social-brand auth-social-linkedin" aria-hidden="true">in</span>;
+  }
+  if (icon === 'x') {
+    return <span className="auth-social-brand auth-social-x" aria-hidden="true">X</span>;
+  }
+  if (icon === 'facebook') {
+    return <span className="auth-social-brand auth-social-facebook" aria-hidden="true">f</span>;
+  }
+  return <NavSvg><path d="M12 5v14" /><path d="M5 12h14" /></NavSvg>;
+}
+
+function AuthSocialActions() {
+  return (
+    <div className="auth-social-actions" aria-label="Social links">
+      {authSocialActions.map((action) => {
+        const content = <AuthSocialIcon icon={action.icon} />;
+        return action.href ? (
+          <a key={action.label} className="auth-social-button" href={action.href} aria-label={action.label} target={action.href.startsWith('http') ? '_blank' : undefined} rel={action.href.startsWith('http') ? 'noreferrer' : undefined}>
+            {content}
+          </a>
+        ) : (
+          <button key={action.label} className="auth-social-button" type="button" aria-label={action.label}>
+            {content}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const router = useRouter();
   const { items: centers } = usePaginatedData<Center>('/centers', '', 100, '', mode === 'signup');
@@ -148,6 +195,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
           {mode === 'login' ? 'ليس لديك حساب؟ ' : 'لديك حساب بالفعل؟ '}
           <Link href={mode === 'login' ? '/signup' : '/login'}>{mode === 'login' ? 'إنشاء حساب جديد' : 'سجل دخولك هنا'}</Link>
         </p>
+        <AuthSocialActions />
       </form>
     </main>
   );
