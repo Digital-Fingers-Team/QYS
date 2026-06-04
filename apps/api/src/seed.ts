@@ -1,5 +1,9 @@
+import fs from "node:fs";
+import path from "node:path";
 import bcrypt from "bcryptjs";
-import { db, disconnectDatabase, initDatabase } from "./db";
+import ExcelJS from "exceljs";
+import type { CenterInput } from "@qys/shared";
+import { db, disconnectDatabase, initDatabase, type CenterRecord } from "./db";
 
 const imagePool = [
   "https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800",
@@ -7,10 +11,87 @@ const imagePool = [
   "https://images.unsplash.com/photo-1540747737273-46c70b0e9851?w=800"
 ];
 
+type CenterAccountSeed = {
+  rowNumber: number;
+  name: string;
+  location: string;
+  email: string;
+  password: string;
+};
+
+const centerAccountsWorkbookPath = process.env.CENTER_ACCOUNTS_XLSX
+  ? path.resolve(process.cwd(), process.env.CENTER_ACCOUNTS_XLSX)
+  : path.resolve(__dirname, "..", "..", "..", "center-accounts.xlsx");
+
+function cellText(row: ExcelJS.Row, columnNumber: number): string {
+  return row.getCell(columnNumber).text.trim();
+}
+
+function headerColumns(sheet: ExcelJS.Worksheet): Map<string, number> {
+  const headers = new Map<string, number>();
+  sheet.getRow(1).eachCell((cell, columnNumber) => {
+    const header = cell.text.trim();
+    if (header) headers.set(header, columnNumber);
+  });
+  return headers;
+}
+
+function requiredColumn(headers: Map<string, number>, name: string): number {
+  const column = headers.get(name);
+  if (!column) throw new Error(`center-accounts.xlsx is missing the "${name}" column`);
+  return column;
+}
+
+async function loadCenterAccounts(): Promise<CenterAccountSeed[]> {
+  if (!fs.existsSync(centerAccountsWorkbookPath)) {
+    throw new Error(`Missing center accounts workbook: ${centerAccountsWorkbookPath}`);
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(centerAccountsWorkbookPath);
+  const sheet = workbook.worksheets[0];
+  if (!sheet) throw new Error("center-accounts.xlsx does not contain a worksheet");
+
+  const headers = headerColumns(sheet);
+  const columns = {
+    name: requiredColumn(headers, "Center Name"),
+    location: requiredColumn(headers, "Location"),
+    email: requiredColumn(headers, "Email"),
+    password: requiredColumn(headers, "Password"),
+    role: requiredColumn(headers, "Role")
+  };
+  const accounts: CenterAccountSeed[] = [];
+  const seenCenters = new Set<string>();
+  const seenEmails = new Set<string>();
+
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const name = cellText(row, columns.name);
+    const location = cellText(row, columns.location);
+    const email = cellText(row, columns.email).toLowerCase();
+    const password = cellText(row, columns.password);
+    const role = cellText(row, columns.role);
+    if (!name && !location && !email && !password) return;
+    if (!name || !location || !email || !password) {
+      throw new Error(`center-accounts.xlsx row ${rowNumber} must include center name, location, email, and password`);
+    }
+    if (role && role !== "CENTER_MANAGER") {
+      throw new Error(`center-accounts.xlsx row ${rowNumber} must use CENTER_MANAGER role`);
+    }
+    if (seenCenters.has(name)) throw new Error(`Duplicate center name in center-accounts.xlsx: ${name}`);
+    if (seenEmails.has(email)) throw new Error(`Duplicate center email in center-accounts.xlsx: ${email}`);
+    seenCenters.add(name);
+    seenEmails.add(email);
+    accounts.push({ rowNumber, name, location, email, password });
+  });
+
+  if (accounts.length === 0) throw new Error("center-accounts.xlsx does not contain any center accounts");
+  return accounts;
+}
+
 const users = [
   { email: "user@example.com", password: process.env.SEED_USER_PASSWORD || "UserDevPass!2026", role: "USER" as const, name: "مستخدم تجريبي", points: 150 },
-  { email: "admin@example.com", password: process.env.SEED_ADMIN_PASSWORD || "AdminDevPass!2026", role: "DIRECTORATE_MANAGER" as const, name: "مدير المديرية", points: 0 },
-  { email: "center@example.com", password: process.env.SEED_CENTER_PASSWORD || "CenterDevPass!2026", role: "CENTER_MANAGER" as const, name: "حساب مركز", points: 0 }
+  { email: "admin@example.com", password: process.env.SEED_ADMIN_PASSWORD || "AdminDevPass!2026", role: "DIRECTORATE_MANAGER" as const, name: "مدير المديرية", points: 0 }
 ];
 
 const centerRows = `
@@ -209,8 +290,21 @@ const challenges = [
   }
 ];
 
+function centerInputFromAccount(account: CenterAccountSeed, index: number): CenterInput {
+  return {
+    name: account.name,
+    location: account.location,
+    rating: 4.2,
+    type: "مركز شباب",
+    image: imagePool[index % imagePool.length],
+    description: `${account.name} في ${account.location}`
+  };
+}
+
 async function main() {
   await initDatabase();
+  const centerAccounts = await loadCenterAccounts();
+  const centersFromWorkbook = centerAccounts.map(centerInputFromAccount);
 
   for (const user of users) {
     const passwordHash = await bcrypt.hash(user.password, 12);
@@ -235,18 +329,55 @@ async function main() {
   }
 
   const existingCenters = await db.centers.list();
-  const centerNames = new Set(existingCenters.map((center) => center.name));
-  for (const center of centers) {
-    if (!centerNames.has(center.name)) {
-      await db.centers.create(center);
+  const centersByName = new Map(existingCenters.map((center) => [center.name, center]));
+  const seededCentersByName = new Map<string, CenterRecord>();
+  for (const center of centersFromWorkbook) {
+    const existingCenter = centersByName.get(center.name);
+    const savedCenter = existingCenter ? await db.centers.update(existingCenter.id, center) : await db.centers.create(center);
+    seededCentersByName.set(savedCenter.name, savedCenter);
+  }
+
+  const existingUsers = await db.users.list();
+  const centerManagersByCenterId = new Map<number, { id: number }>();
+  for (const user of existingUsers) {
+    if (user.role === "CENTER_MANAGER" && user.centerId && !centerManagersByCenterId.has(user.centerId)) {
+      centerManagersByCenterId.set(user.centerId, { id: user.id });
     }
   }
 
-  const seededCenter = (await db.centers.list())[0];
-  const centerAccount = await db.users.findByEmail("center@example.com");
-  if (seededCenter && centerAccount) {
-    await db.users.update(centerAccount.id, { centerId: seededCenter.id, role: "CENTER_MANAGER" });
+  for (const account of centerAccounts) {
+    const center = seededCentersByName.get(account.name);
+    if (!center) throw new Error(`Could not seed center account from row ${account.rowNumber}: ${account.name}`);
+    const passwordHash = await bcrypt.hash(account.password, 12);
+    const existingByEmail = await db.users.findByEmail(account.email);
+    const existingCenterManager = centerManagersByCenterId.get(center.id);
+    const existingAccount = existingByEmail ?? existingCenterManager;
+    if (existingAccount) {
+      await db.users.update(existingAccount.id, {
+        name: account.name,
+        email: account.email,
+        role: "CENTER_MANAGER",
+        centerId: center.id,
+        points: 0,
+        status: "ACTIVE",
+        isActive: true,
+        passwordHash
+      });
+    } else {
+      await db.users.create({
+        name: account.name,
+        email: account.email,
+        role: "CENTER_MANAGER",
+        centerId: center.id,
+        points: 0,
+        status: "ACTIVE",
+        isActive: true,
+        passwordHash
+      });
+    }
   }
+
+  const seededCenter = seededCentersByName.values().next().value;
   const demoUserAccount = await db.users.findByEmail("user@example.com");
   if (seededCenter && demoUserAccount) {
     await db.users.update(demoUserAccount.id, { centerId: seededCenter.id, role: "USER" });
@@ -270,9 +401,10 @@ async function main() {
         title: "تطوير ملاعب التنس",
         description: "نقترح إضافة ملاعب تنس جديدة في مركز شباب بنها"
       },
-      seededUser.id
+      seededUser.id,
+      seededUser.centerId ?? seededCenter?.id
     );
-    await db.ideas.updateStatus(idea.id, "PENDING");
+    await db.ideas.updateStatus(idea.id, "ACTIVE");
     for (let i = 0; i < 25; i += 1) await db.ideas.vote(idea.id);
   }
   if (!existingIdeas.some((idea) => idea.title === "تطبيق للمسابقات")) {
@@ -281,7 +413,8 @@ async function main() {
         title: "تطبيق للمسابقات",
         description: "إنشاء تطبيق خاص للمسابقات الرياضية بين مراكز المحافظة"
       },
-      seededUser.id
+      seededUser.id,
+      seededUser.centerId ?? seededCenter?.id
     );
     await db.ideas.updateStatus(idea.id, "RESOLVED");
     for (let i = 0; i < 42; i += 1) await db.ideas.vote(idea.id);
@@ -295,7 +428,8 @@ async function main() {
         description: "الإنارة في الملعب الخماسي تحتاج لصيانة",
         type: "صيانة"
       },
-      seededUser.id
+      seededUser.id,
+      seededUser.centerId ?? seededCenter?.id
     );
     await db.complaints.updateStatus(complaint.id, "PENDING");
   }
