@@ -1624,7 +1624,7 @@ function ChatPage({ token, currentUser, admin }: { token: string; currentUser: U
     : admin && selectedCenterId
       ? `/chat/messages?scope=center&centerId=${selectedCenterId}`
       : '/chat/messages?scope=center';
-  const { data: messages, load } = useData<ChatMessage[]>(chatPath, token, [], thread === 'all' || canLoadPrivate);
+  const { data: messages, setData: setMessages, error: loadError, load } = useData<ChatMessage[]>(chatPath, token, [], thread === 'all' || canLoadPrivate);
   const visibleMessages = messages || [];
   const canSend = admin || thread === 'center';
 
@@ -1645,7 +1645,7 @@ function ChatPage({ token, currentUser, admin }: { token: string; currentUser: U
     setError('');
     setSending(true);
     try {
-      await api<ChatMessage>('/chat/messages', {
+      const sent = await api<ChatMessage>('/chat/messages', {
         method: 'POST',
         body: JSON.stringify({
           scope: thread,
@@ -1653,6 +1653,7 @@ function ChatPage({ token, currentUser, admin }: { token: string; currentUser: U
           body: draft
         })
       }, token);
+      setMessages((current) => [...(current || []), sent]);
       setDraft('');
       await load();
     } catch (err) {
@@ -1705,11 +1706,25 @@ function ChatPage({ token, currentUser, admin }: { token: string; currentUser: U
             <div ref={bottomRef} />
           </div>
           <form className="chat-composer" onSubmit={send}>
-            <textarea className="textarea" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={canSend ? 'اكتب رسالتك...' : 'الرد متاح في محادثة المركز الخاصة فقط'} disabled={!canSend || sending} maxLength={2000} required />
+            <textarea
+              className="textarea"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+              placeholder={canSend ? 'اكتب رسالتك...' : 'الرد متاح في محادثة المركز الخاصة فقط'}
+              disabled={!canSend || sending}
+              maxLength={2000}
+              required
+            />
             <button className="btn primary" type="submit" disabled={!canSend || sending || !draft.trim()}>{sending ? 'جار الإرسال...' : 'إرسال'}</button>
           </form>
           {!canSend && <p className="muted chat-note">الرسائل العامة للقراءة فقط لمسؤولي المراكز. استخدم محادثة المركز للرد على المديرية.</p>}
-          {error && <p className="error">{error}</p>}
+          {(error || loadError) && <p className="error">{error || loadError}</p>}
         </section>
       </section>
     </>
