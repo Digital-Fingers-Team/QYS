@@ -1603,6 +1603,7 @@ function ChatPage({ token, currentUser, admin }: { token: string; currentUser: U
   const [thread, setThread] = useState<'all' | 'center'>('center');
   const [selectedCenterId, setSelectedCenterId] = useState<number | undefined>();
   const [draft, setDraft] = useState('');
+  const [chatSearch, setChatSearch] = useState('');
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -1626,6 +1627,13 @@ function ChatPage({ token, currentUser, admin }: { token: string; currentUser: U
       : '/chat/messages?scope=center';
   const { data: messages, setData: setMessages, error: loadError, load } = useData<ChatMessage[]>(chatPath, token, [], thread === 'all' || canLoadPrivate);
   const visibleMessages = messages || [];
+  const filteredMessages = useMemo(() => {
+    const query = chatSearch.trim().toLowerCase();
+    if (!query) return visibleMessages;
+    return visibleMessages.filter((message) =>
+      `${message.body} ${message.sender?.name || ''} ${message.center?.name || ''} ${message.center?.location || ''}`.toLowerCase().includes(query)
+    );
+  }, [chatSearch, visibleMessages]);
   const canSend = admin || thread === 'center';
 
   useEffect(() => {
@@ -1685,10 +1693,11 @@ function ChatPage({ token, currentUser, admin }: { token: string; currentUser: U
             <strong>{thread === 'all' ? 'كل المراكز' : admin ? activeCenter?.name || 'اختر مركزا' : 'مركزك'}</strong>
             <p className="muted">{thread === 'all' ? 'تظهر هذه الرسائل لجميع مسؤولي المراكز.' : 'هذه المحادثة مرئية للمديرية والمركز فقط.'}</p>
           </div>
+          <input className="input chat-search" type="search" value={chatSearch} onChange={(event) => setChatSearch(event.target.value)} placeholder="بحث في الرسائل" />
         </aside>
         <section className="panel chat-panel">
           <div className="chat-messages" aria-live="polite">
-            {visibleMessages.map((message) => {
+            {filteredMessages.map((message) => {
               const own = message.senderId === currentUser.id;
               return (
                 <article key={message.id} className={`chat-message ${own ? 'own' : ''}`}>
@@ -1703,6 +1712,7 @@ function ChatPage({ token, currentUser, admin }: { token: string; currentUser: U
               );
             })}
             {visibleMessages.length === 0 && <EmptyState title="لا توجد رسائل بعد" detail={thread === 'all' ? 'ابدأ بإرسال إعلان لجميع المراكز.' : 'ابدأ محادثة مباشرة مع المركز.'} />}
+            {visibleMessages.length > 0 && filteredMessages.length === 0 && <EmptyState title="لا توجد نتائج" detail="جرّب كلمة بحث أخرى داخل هذه المحادثة." />}
             <div ref={bottomRef} />
           </div>
           <form className="chat-composer" onSubmit={send}>

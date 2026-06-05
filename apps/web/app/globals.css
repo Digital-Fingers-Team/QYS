@@ -3712,6 +3712,10 @@ tr:hover td {
   margin-top: -6px;
 }
 
+.chat-search {
+  min-height: 38px;
+}
+
 @media (max-width: 720px) {
   .dashboard-grid,
   .center-profile-grid {
