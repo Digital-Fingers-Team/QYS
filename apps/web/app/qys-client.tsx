@@ -551,16 +551,18 @@ function AuditTimeline({ items }: { items: TimelineItem[] }) {
 }
 
 function MiniBarChart({ title, items, valueLabel }: { title: string; items: Array<{ label: string; value: number; tone?: AlertTone }>; valueLabel?: (value: number) => string }) {
+  const hasValues = items.some((item) => item.value > 0);
   const max = Math.max(1, ...items.map((item) => item.value));
   return (
     <section className="panel analytics-card">
       <h3>{title}</h3>
       <div className="analytics-bars">
-        {items.map((item) => (
+        {!hasValues && <EmptyState title="لا توجد بيانات مسجلة" detail="سيظهر الرسم هنا بعد تسجيل قيم فعلية لهذا المؤشر." />}
+        {hasValues && items.map((item) => (
           <div className="analytics-bar-row" key={item.label}>
             <span>{item.label}</span>
             <div className="analytics-bar-track">
-              <i className={item.tone || 'info'} style={{ width: `${Math.max(4, (item.value / max) * 100)}%` }} />
+              <i className={item.tone || 'info'} style={{ width: item.value > 0 ? `${Math.max(4, (item.value / max) * 100)}%` : '0%' }} />
             </div>
             <strong>{valueLabel ? valueLabel(item.value) : item.value}</strong>
           </div>
@@ -1770,17 +1772,25 @@ export function AdminPage({ section }: { section: 'dashboard' | 'users' | 'cente
 }
 
 function AdminDashboard({ token }: { token: string }) {
-  const { data } = useData<any>('/stats/admin', token);
+  const { data, error: statsError } = useData<any>('/stats/admin', token);
   const month = currentMonthValue();
-  const { data: summary } = useData<MonthlyReportsSummary>(`/monthly-reports/summary?month=${month}`, token, null);
+  const { data: summary, error: summaryError } = useData<MonthlyReportsSummary>(`/monthly-reports/summary?month=${month}`, token, null);
+  const uploadedCenters = summary?.uploadedCenters || 0;
   const missingReports = summary?.missingCentersTotal || 0;
   const rejectedUploads = (summary?.latestUploads || []).filter((upload) => upload.status === 'REJECTED').length;
+  const monthIndicators = summary ? [
+    { label: 'المراكز الرافعة', value: uploadedCenters, tone: 'success' as AlertTone },
+    { label: 'المراكز الناقصة', value: missingReports, tone: missingReports ? 'danger' as AlertTone : 'success' as AlertTone },
+    { label: 'ملفات مرفوضة', value: rejectedUploads, tone: rejectedUploads ? 'warning' as AlertTone : 'success' as AlertTone },
+    { label: 'آخر الرفعات', value: summary.latestUploads.length, tone: 'info' as AlertTone }
+  ] : [];
   const alerts: AlertItem[] = [
-    missingReports > 0 ? { title: 'تقارير شهرية ناقصة', detail: `${missingReports} مركز لم يرفع تقرير ${formatMonthArabic(month)}.`, tone: 'danger', href: '/admin/reports' } : { title: 'التقارير مكتملة', detail: 'لا توجد تقارير شهرية ناقصة في الصفحة الحالية.', tone: 'success', href: '/admin/reports' },
+    summary ? (missingReports > 0 ? { title: 'تقارير شهرية ناقصة', detail: `${missingReports} مركز لم يرفع تقرير ${formatMonthArabic(month)}.`, tone: 'danger', href: '/admin/reports' } : { title: 'التقارير مكتملة', detail: `كل المراكز رفعت تقرير ${formatMonthArabic(month)}.`, tone: 'success', href: '/admin/reports' }) : { title: 'تحميل مؤشرات التقارير', detail: 'يتم جلب بيانات الشهر من التقارير الفعلية.', tone: 'info', href: '/admin/reports' },
     rejectedUploads > 0 ? { title: 'ملفات Excel مرفوضة', detail: `${rejectedUploads} ملف يحتاج مراجعة من آخر الرفعات.`, tone: 'warning', href: '/admin/reports' } : undefined,
     data?.newComplaints > 0 ? { title: 'شكاوى جديدة', detail: `${data.newComplaints} شكوى تحتاج معالجة.`, tone: 'warning', href: '/admin/complaints' } : undefined,
     data?.pendingIdeas > 0 ? { title: 'أفكار معلقة', detail: `${data.pendingIdeas} فكرة بانتظار قرار النشر.`, tone: 'info', href: '/admin/ideas' } : undefined
   ].filter(Boolean) as AlertItem[];
+  const indicatorsError = summaryError || statsError;
   return (
     <>
       <Header title="لوحة تشغيل المديرية" subtitle="نظرة فورية على التقارير، الشكاوى، النشاط، والتنبيهات." />
@@ -1800,17 +1810,26 @@ function AdminDashboard({ token }: { token: string }) {
         }))} />
       </div>
       <div className="dashboard-grid" style={{ marginTop: 16 }}>
-        <MiniBarChart title="مؤشرات الشهر" items={[
-          { label: 'المراكز الرافعة', value: summary?.uploadedCenters || 0, tone: 'success' },
-          { label: 'المراكز الناقصة', value: missingReports, tone: missingReports ? 'danger' : 'success' },
-          { label: 'الشكاوى الجديدة', value: data?.newComplaints || 0, tone: 'warning' },
-          { label: 'الأفكار المعلقة', value: data?.pendingIdeas || 0, tone: 'info' }
-        ]} />
-        <MiniBarChart title="آخر 6 أشهر" items={(summary?.monthlyStatistics || []).map((item) => ({
-          label: formatMonthArabic(item.month),
-          value: item.uploadedCenters,
-          tone: 'info'
-        }))} />
+        {summary ? (
+          <MiniBarChart title="تغطية تقارير الشهر" items={monthIndicators} />
+        ) : (
+          <section className="panel analytics-card">
+            <h3>تغطية تقارير الشهر</h3>
+            <EmptyState title={indicatorsError ? 'تعذر تحميل المؤشرات' : 'جاري تحميل المؤشرات'} detail={indicatorsError || 'يتم جلب أرقام الشهر من التقارير الفعلية.'} />
+          </section>
+        )}
+        {summary ? (
+          <MiniBarChart title="آخر 6 أشهر" items={summary.monthlyStatistics.map((item) => ({
+            label: formatMonthArabic(item.month),
+            value: item.uploadedCenters,
+            tone: 'info'
+          }))} />
+        ) : (
+          <section className="panel analytics-card">
+            <h3>آخر 6 أشهر</h3>
+            <EmptyState title={summaryError ? 'تعذر تحميل الإحصاءات' : 'جاري تحميل الإحصاءات'} detail={summaryError || 'ستظهر إحصاءات الرفع الشهرية بعد اكتمال التحميل.'} />
+          </section>
+        )}
       </div>
       <div className="panel activity-panel" style={{ marginTop: 16 }}>
         <h3>أحدث النشاطات</h3>
