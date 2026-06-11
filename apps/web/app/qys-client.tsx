@@ -1844,7 +1844,9 @@ function AdminDashboard({ token }: { token: string }) {
 }
 
 function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }) {
-  const { items: users, load, page, totalPages, setPage } = usePaginatedData<User>('/users', token, 20);
+  const [query, setQuery] = useState('');
+  const normalUsers = usePaginatedData<User>('/users?role=USER', token, 20, query);
+  const centerAccounts = usePaginatedData<User>('/users?role=CENTER_MANAGER', token, 20, query);
   const { items: centers } = usePaginatedData<Center>('/centers', token, 100);
   const allowedRoles = roleOptionsFor(currentUser.role);
   const [editing, setEditing] = useState<User | null>(null);
@@ -1853,10 +1855,36 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [activeDirectory, setActiveDirectory] = useState<'normal' | 'centers'>('normal');
+  const activePage = activeDirectory === 'normal' ? normalUsers : centerAccounts;
+  const users = activePage.items;
+  const activeRole: Role = activeDirectory === 'normal' ? 'USER' : 'CENTER_MANAGER';
+  const activeCount = activePage.data?.total || 0;
+  const activeActiveCount = users.filter((user) => user.isActive).length;
+  const activeInactiveCount = users.length - activeActiveCount;
 
   function centerIdFrom(form: HTMLFormElement) {
     const value = num(form, 'centerId');
     return value || null;
+  }
+
+  function loadDirectories() {
+    return Promise.all([normalUsers.load(), centerAccounts.load()]).then(() => undefined);
+  }
+
+  function switchDirectory(directory: 'normal' | 'centers') {
+    setActiveDirectory(directory);
+    setEditing(null);
+    setShowCreate(false);
+    setMessage('');
+    setCreateRole(directory === 'normal' ? 'USER' : 'CENTER_MANAGER');
+  }
+
+  function toggleCreate() {
+    const nextShow = !showCreate;
+    setShowCreate(nextShow);
+    setEditing(null);
+    if (nextShow) setCreateRole(activeRole);
   }
 
   async function run(action: () => Promise<void>) {
@@ -1864,7 +1892,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
     setMessage('');
     try {
       await action();
-      await load();
+      await loadDirectories();
     } catch (err) {
       setMessage((err as Error).message);
     } finally {
@@ -1891,7 +1919,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
         })
       }, token);
       form.reset();
-      setCreateRole(allowedRoles[0]?.value || 'USER');
+      setCreateRole(activeRole);
       setShowCreate(false);
     });
   }
@@ -1948,12 +1976,42 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
 
   return (
     <>
-      <Header title="إدارة المستخدمين" />
-      <div className="inline-actions" style={{ marginTop: 0 }}>
-        <button className="btn primary" type="button" onClick={() => {
-          setShowCreate((value) => !value);
-          setEditing(null);
-        }}>{showCreate ? 'إغلاق إضافة مستخدم' : 'إضافة مستخدم'}</button>
+      <Header title="إدارة الحسابات" subtitle="افصل حسابات الأعضاء عن حسابات المراكز مع إدارة كل نوع من مكانه." />
+      <div className="account-toolbar">
+        <div className="account-search">
+          <span aria-hidden>{navIconFor('/admin/users')}</span>
+          <input className="input" type="search" placeholder="ابحث بالاسم أو البريد" value={query} onChange={(event) => setQuery(event.target.value)} />
+        </div>
+        <button className="btn primary" type="button" onClick={toggleCreate}>{showCreate ? 'إغلاق الإضافة' : activeDirectory === 'normal' ? 'إضافة مستخدم' : 'إضافة حساب مركز'}</button>
+      </div>
+      <div className="account-directory-switch" aria-label="أنواع الحسابات">
+        <button className={`account-segment ${activeDirectory === 'normal' ? 'active' : ''}`} type="button" onClick={() => switchDirectory('normal')}>
+          <span className="account-segment-icon" aria-hidden>{navIconFor('/admin/users')}</span>
+          <span className="account-segment-copy">
+            <strong>المستخدمون العاديون</strong>
+            <small>الأعضاء والشباب المرتبطون بالمراكز</small>
+          </span>
+          <span className="account-segment-count">{normalUsers.data?.total || 0}</span>
+        </button>
+        <button className={`account-segment ${activeDirectory === 'centers' ? 'active' : ''}`} type="button" onClick={() => switchDirectory('centers')}>
+          <span className="account-segment-icon" aria-hidden>{navIconFor('/admin/centers')}</span>
+          <span className="account-segment-copy">
+            <strong>حسابات المراكز</strong>
+            <small>مسؤولو المراكز والتقارير</small>
+          </span>
+          <span className="account-segment-count">{centerAccounts.data?.total || 0}</span>
+        </button>
+      </div>
+      <div className="account-context-strip">
+        <div>
+          <span>{roleLabel(activeRole)}</span>
+          <strong>{activeDirectory === 'normal' ? 'المستخدمون العاديون' : 'حسابات المراكز'}</strong>
+        </div>
+        <div className="account-context-metrics">
+          <span><strong>{activeCount}</strong> إجمالي</span>
+          <span><strong>{activeActiveCount}</strong> نشط في الصفحة</span>
+          <span><strong>{activeInactiveCount}</strong> معطل في الصفحة</span>
+        </div>
       </div>
       {showCreate && <form className="panel form-grid" onSubmit={create} style={{ marginTop: 16 }}>
         <input className="input" name="name" placeholder="الاسم" required />
@@ -1963,7 +2021,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
         <select className="select" name="role" value={createRole} onChange={(e) => setCreateRole(e.target.value as Role)}>
           {allowedRoles.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
-        <CenterSelect centers={centers} />
+        <CenterSelect centers={centers} required={createRole === 'CENTER_MANAGER'} />
         <button className="btn primary" disabled={busy}>إضافة</button>
       </form>}
       {message && <p className="error">{message}</p>}
@@ -1975,7 +2033,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
         <select className="select" name="role" value={editingRole} onChange={(e) => setEditingRole(e.target.value as Role)}>
           {allowedRoles.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
-        <CenterSelect centers={centers} defaultValue={editing.centerId || ''} />
+        <CenterSelect centers={centers} defaultValue={editing.centerId || ''} required={editingRole === 'CENTER_MANAGER'} />
         <input className="input" name="resetPassword" type="password" minLength={6} maxLength={128} placeholder="كلمة مرور جديدة (اختياري، 6 أحرف على الأقل)" />
         <label className="check-row"><input type="checkbox" name="isActive" defaultChecked={editing.isActive} /> حساب نشط</label>
         <button className="btn primary" disabled={busy}>حفظ</button>
@@ -2004,7 +2062,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
           </tbody>
         </table>
       </div>
-      <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
+      <PaginationControls page={activePage.page} totalPages={activePage.totalPages} setPage={activePage.setPage} />
     </>
   );
 }

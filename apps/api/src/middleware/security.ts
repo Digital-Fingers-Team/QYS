@@ -51,12 +51,17 @@ export function rejectUnexpectedQuery(req: Request, _res: Response, next: NextFu
     "/api/reports",
     "/api/activities"
   ]);
+  const userPaths = new Set([
+    "/users",
+    "/api/users"
+  ]);
   const chatPaths = new Set([
     "/chat/messages",
     "/api/chat/messages"
   ]);
   if (monthlyPaths.has(req.path) && keys.every((key) => ["month", "page", "pageSize"].includes(key))) return next();
   if (monthlyDownloadPaths.has(req.path) && keys.length === 1 && keys[0] === "month") return next();
+  if (userPaths.has(req.path) && keys.every((key) => ["page", "pageSize", "q", "role"].includes(key))) return next();
   if (paginatedPaths.has(req.path) && keys.every((key) => ["page", "pageSize", "q"].includes(key))) return next();
   if (chatPaths.has(req.path) && keys.every((key) => ["scope", "centerId"].includes(key))) return next();
 

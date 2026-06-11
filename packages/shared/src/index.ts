@@ -115,7 +115,8 @@ export const paginationQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1),
     pageSize: z.coerce.number().int().positive().max(100).default(20),
-    q: z.string().trim().max(160).optional()
+    q: z.string().trim().max(160).optional(),
+    role: RoleSchema.optional()
   })
   .strict();
 export const monthlyReportUploadBodySchema = z.object({

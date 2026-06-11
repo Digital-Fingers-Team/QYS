@@ -6,7 +6,10 @@ const envSchema = z
   .object({
     PORT: z.string().default("4000"),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-    MONGODB_URL: z.string().url(),
+    MONGODB_URL: z
+      .string()
+      .min(1)
+      .refine((value) => /^mongodb(\+srv)?:\/\//i.test(value), "MONGODB_URL must be a MongoDB connection string"),
     JWT_SECRET: z
       .string()
       .min(32)

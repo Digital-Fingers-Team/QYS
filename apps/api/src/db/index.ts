@@ -746,17 +746,17 @@ export const db = {
       cache.invalidate("stats");
       return user;
     },
-    async list(filter?: { centerId?: number; q?: string }): Promise<PublicUser[]> {
+    async list(filter?: { centerId?: number; q?: string; role?: Role }): Promise<PublicUser[]> {
       await ensureMongoConnected();
       const q = regexFor(filter?.q);
-      const where = clean({ centerId: filter?.centerId }) as Record<string, unknown>;
+      const where = clean({ centerId: filter?.centerId, role: filter?.role ? asRole(filter.role) : undefined }) as Record<string, unknown>;
       if (q) where.$or = [{ name: q }, { email: q }];
       return (await MongoUser.find(where, { _id: 0, passwordHash: 0, managedPassword: 0 }).sort({ createdAt: -1 }).lean().exec()) as PublicUser[];
     },
-    async listPage(filter?: { centerId?: number; q?: string; page?: number; pageSize?: number }): Promise<Paginated<PublicUser>> {
+    async listPage(filter?: { centerId?: number; q?: string; role?: Role; page?: number; pageSize?: number }): Promise<Paginated<PublicUser>> {
       await ensureMongoConnected();
       const q = regexFor(filter?.q);
-      const where = clean({ centerId: filter?.centerId }) as Record<string, unknown>;
+      const where = clean({ centerId: filter?.centerId, role: filter?.role ? asRole(filter.role) : undefined }) as Record<string, unknown>;
       if (q) where.$or = [{ name: q }, { email: q }];
       const { page, pageSize } = pageFilter(filter);
       const [items, total] = await Promise.all([

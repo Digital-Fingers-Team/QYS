@@ -36,7 +36,7 @@ export const usersController = {
     const centerId = req.user?.role === "CENTER_MANAGER" ? req.user.centerId : undefined;
     if (req.user?.role === "CENTER_MANAGER" && !centerId) throw new ApiError(400, "No center is linked to this account", "CENTER_REQUIRED");
     const query = paginationFrom(req);
-    const filter = { ...(centerId ? { centerId } : {}), q: query.q };
+    const filter = { ...(centerId ? { centerId } : {}), q: query.q, role: query.role };
     res.json(wantsPaginated(req) ? mapPage(await db.users.listPage({ ...filter, page: query.page, pageSize: query.pageSize }), publicUser) : (await db.users.list(filter)).map(publicUser));
   },
   create: async (req: AuthedRequest, res: Response) => {

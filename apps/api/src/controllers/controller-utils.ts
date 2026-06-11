@@ -4,7 +4,7 @@ import { idParamSchema, paginationQuerySchema } from "@qys/shared";
 export const idParam = (req: Request) => idParamSchema.parse(req.params).id;
 
 export function paginationFrom(req: Request) {
-  return paginationQuerySchema.parse({ page: req.query.page, pageSize: req.query.pageSize, q: req.query.q });
+  return paginationQuerySchema.parse({ page: req.query.page, pageSize: req.query.pageSize, q: req.query.q, role: req.query.role });
 }
 
 export function wantsPaginated(req: Request) {
