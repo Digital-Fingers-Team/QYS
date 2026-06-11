@@ -88,3 +88,23 @@ test("Excel parser rejects formulas", async () => {
   const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
   await assert.rejects(() => parseMonthlyReportExcel(buffer), /formulas|UNSAFE_EXCEL_CELL/);
 });
+
+test("monthly report template uses Arabic headers and remains parseable", async () => {
+  const { buildMonthlyTemplateWorkbook } = await import("./services/monthly-report-export.service");
+  const { parseMonthlyReportExcel } = await import("./services/excel-parser.service");
+  const buffer = await buildMonthlyTemplateWorkbook("2026-05");
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
+  const sheet = workbook.worksheets[0];
+  assert.deepEqual(
+    [1, 2, 3, 4].map((column) => String(sheet.getRow(1).getCell(column).value)),
+    ["اسم الفعالية", "الشهر", "الإيرادات", "المصروفات"]
+  );
+  assert.deepEqual(await parseMonthlyReportExcel(buffer), {
+    eventName: "اسم الفعالية",
+    month: "2026-05",
+    revenues: 0,
+    expenses: 0,
+    seminarsCount: 0
+  });
+});

@@ -74,10 +74,10 @@ export async function buildMonthlyTemplateWorkbook(month: string) {
   });
 
   sheet.columns = [
-    { header: "event_name", key: "eventName", width: 36 },
-    { header: "month", key: "month", width: 14 },
-    { header: "revenues", key: "revenues", width: 16 },
-    { header: "expenses", key: "expenses", width: 16 }
+    { header: "اسم الفعالية", key: "eventName", width: 36 },
+    { header: "الشهر", key: "month", width: 14 },
+    { header: "الإيرادات", key: "revenues", width: 16 },
+    { header: "المصروفات", key: "expenses", width: 16 }
   ];
 
   sheet.addRow({

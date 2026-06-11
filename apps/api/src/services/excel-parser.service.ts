@@ -5,6 +5,18 @@ const requiredHeaders = ["event_name", "month", "revenues", "expenses"] as const
 type RequiredHeader = (typeof requiredHeaders)[number];
 const maxRows = 20;
 const maxColumns = requiredHeaders.length;
+const headerAliases = new Map<string, RequiredHeader>([
+  ["event_name", "event_name"],
+  ["اسم الفعالية", "event_name"],
+  ["اسم الفعاليه", "event_name"],
+  ["الشهر", "month"],
+  ["month", "month"],
+  ["الإيرادات", "revenues"],
+  ["الايرادات", "revenues"],
+  ["revenues", "revenues"],
+  ["المصروفات", "expenses"],
+  ["expenses", "expenses"]
+]);
 
 export type ParsedMonthlyReport = {
   eventName: string;
@@ -22,6 +34,10 @@ function cellText(value: unknown) {
   if (value instanceof Date) return value.toISOString();
   if (value && typeof value === "object") return "";
   return String(value ?? "").normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, "").trim();
+}
+
+function canonicalHeader(value: unknown) {
+  return headerAliases.get(cellText(value));
 }
 
 function parseNumber(value: unknown, label: string) {
@@ -73,11 +89,12 @@ export async function parseMonthlyReportExcel(buffer: Buffer): Promise<ParsedMon
 
   assertNoExtraCells(sheet);
 
-  const headers = readRow(sheet.getRow(1)).map(cellText);
+  const rawHeaders = readRow(sheet.getRow(1));
+  const headers = rawHeaders.map(canonicalHeader);
   const missing = requiredHeaders.filter((header) => !headers.includes(header));
-  if (missing.length) throw new ApiError(400, `Missing required columns: ${requiredHeaders.join(", ")}.`, "MISSING_COLUMNS", { missing });
+  if (missing.length) throw new ApiError(400, "Missing required columns.", "MISSING_COLUMNS", { missing });
 
-  const extras = headers.filter((header) => header && !requiredHeaders.includes(header as RequiredHeader));
+  const extras = rawHeaders.map(cellText).filter((header, index) => header && !headers[index]);
   if (extras.length) throw new ApiError(400, "Workbook contains unexpected columns.", "INVALID_COLUMNS", { extras });
 
   const dataRows = sheet
