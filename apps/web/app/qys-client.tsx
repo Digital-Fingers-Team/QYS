@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import type { MonthlyReportRow, MonthlyReportsSummary, Paginated } from '@qys/shared';
+import type { AssistantChatResponse, MonthlyReportRow, MonthlyReportsSummary, Paginated } from '@qys/shared';
 import { api, apiForm, ApiClientError, downloadApi } from '../lib/api';
 import { field, num, useData, usePaginatedData } from './qys/data';
 import { canAccessReports, canManageAccounts, canOpenAdmin, roleLabel, roleOptionsFor } from './qys/permissions';
@@ -227,10 +227,115 @@ function hasUserPoints(role?: Role) {
   return role === 'USER';
 }
 
+type AssistantMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  actions?: AssistantChatResponse['actions'];
+};
+
+function AssistantWidget({ token, user }: { token: string; user: User }) {
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState<AssistantMessage[]>([
+    {
+      role: 'assistant',
+      content: user.role === 'DIRECTORATE_MANAGER'
+        ? 'أهلا، أستطيع شرح أي صفحة في لوحة الإدارة وإرشادك في التقارير، المستخدمين، المراكز، الشكاوى، والأفكار.'
+        : user.role === 'CENTER_MANAGER'
+          ? 'أهلا، أستطيع شرح واجهة المركز وإرشادك في تقرير المركز، المستخدمين، الشكاوى، ومحادثة المديرية.'
+          : 'أهلا، أستطيع شرح صفحات المنصة وإرشادك في التحديات، الأفكار، الشكاوى، ودليل المراكز.'
+    }
+  ]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (open) bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight });
+  }, [messages, open]);
+
+  async function send(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text || loading) return;
+    const nextMessages: AssistantMessage[] = [...messages, { role: 'user', content: text }];
+    setMessages(nextMessages);
+    setInput('');
+    setError('');
+    setLoading(true);
+    try {
+      const response = await api<AssistantChatResponse>('/assistant/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: text,
+          currentPath: pathname,
+          history: nextMessages.slice(-8).map((message) => ({ role: message.role, content: message.content }))
+        })
+      }, token);
+      setMessages((current) => [...current, { role: 'assistant', content: response.answer, actions: response.actions }]);
+    } catch (err) {
+      setError((err as Error).message);
+      setMessages((current) => [...current, { role: 'assistant', content: 'لم أستطع الوصول للمساعد الآن. جرّب مرة أخرى بعد لحظات.' }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className={`assistant-widget ${open ? 'open' : ''}`}>
+      {open && (
+        <section className="assistant-panel" aria-label="مساعد المنصة">
+          <div className="assistant-header">
+            <div>
+              <strong>مساعد المنصة</strong>
+              <span>{roleDescription(user.role)}</span>
+            </div>
+            <button className="assistant-close" type="button" onClick={() => setOpen(false)} aria-label="إغلاق المساعد">×</button>
+          </div>
+          <div className="assistant-body" ref={bodyRef}>
+            {messages.map((message, index) => (
+              <article key={`${message.role}-${index}`} className={`assistant-message ${message.role}`}>
+                <p>{message.content}</p>
+                {message.actions && message.actions.length > 0 && (
+                  <div className="assistant-actions">
+                    {message.actions.map((action) => action.href ? (
+                      <Link key={`${action.label}-${action.href}`} className="assistant-action" href={action.href} onClick={() => setOpen(false)}>{action.label}</Link>
+                    ) : (
+                      <span key={`${action.label}-${action.intent}`} className="assistant-action">{action.label}</span>
+                    ))}
+                  </div>
+                )}
+              </article>
+            ))}
+            {loading && <div className="assistant-thinking">يفكر...</div>}
+          </div>
+          <form className="assistant-form" onSubmit={send}>
+            <input
+              className="input"
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder="اسأل عن التقارير، الشكاوى، المستخدمين..."
+              maxLength={2000}
+              disabled={loading}
+            />
+            <button className="btn primary" type="submit" disabled={loading || !input.trim()}>إرسال</button>
+          </form>
+          {error && <p className="assistant-error">{error}</p>}
+        </section>
+      )}
+      <button className="assistant-toggle" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label="فتح مساعد المنصة">
+        <span aria-hidden>{navIconFor('/admin/chat')}</span>
+        <strong>AI</strong>
+      </button>
+    </div>
+  );
+}
+
 function Shell({ children, admin = false }: { children: React.ReactNode; admin?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, ready } = useSession(true);
+  const { token, user, ready } = useSession(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const t = labels[user?.language || 'ar'];
   const nav = admin
@@ -330,6 +435,7 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
         </header>
         <div className="content-wrapper">{children}</div>
       </main>
+      <AssistantWidget token={token} user={user} />
     </div>
   );
 }
@@ -1889,6 +1995,14 @@ function ChatPage({ token, currentUser, admin }: { token: string; currentUser: U
     );
   }, [chatSearch, visibleMessages]);
   const canSend = admin || thread === 'center';
+  const activeThreadTitle = thread === 'all' ? 'كل المراكز' : admin ? activeCenter?.name || 'اختر مركزا' : 'محادثة مركزك';
+  const activeThreadDescription = thread === 'all'
+    ? 'إعلان عام يظهر لكل مسؤولي المراكز.'
+    : admin
+      ? activeCenter ? `${activeCenter.location} | محادثة خاصة مع المركز` : 'اختر مركزا لبدء المحادثة الخاصة.'
+      : 'محادثة خاصة بين مركزك والمديرية.';
+  const messageCountLabel = chatSearch.trim() ? `${filteredMessages.length} من ${visibleMessages.length}` : String(visibleMessages.length);
+  const draftCount = draft.trim().length;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
@@ -1930,6 +2044,13 @@ function ChatPage({ token, currentUser, admin }: { token: string; currentUser: U
       <Header title={admin ? 'محادثات المراكز' : 'محادثة المديرية'} subtitle={admin ? 'أرسل رسالة لمركز محدد أو لجميع المراكز مرة واحدة.' : 'تابع رسائل المديرية ورد على محادثة مركزك.'} />
       <section className="chat-layout">
         <aside className="panel chat-sidebar">
+          <div className="chat-sidebar-title">
+            <span className="chat-sidebar-icon" aria-hidden>{navIconFor('/admin/chat')}</span>
+            <div>
+              <strong>المحادثات</strong>
+              <span>{admin ? 'إدارة تواصل المراكز' : 'تواصل مباشر مع المديرية'}</span>
+            </div>
+          </div>
           <div className="chat-thread-tabs" role="tablist" aria-label="Chat threads">
             <button className={`btn ${thread === 'center' ? 'primary' : ''}`} type="button" onClick={() => setThread('center')}>مركز محدد</button>
             <button className={`btn ${thread === 'all' ? 'primary' : ''}`} type="button" onClick={() => setThread('all')}>كل المراكز</button>
@@ -1944,12 +2065,35 @@ function ChatPage({ token, currentUser, admin }: { token: string; currentUser: U
           )}
           <div className="chat-thread-summary">
             <span>{thread === 'all' ? 'رسالة عامة' : 'محادثة خاصة'}</span>
-            <strong>{thread === 'all' ? 'كل المراكز' : admin ? activeCenter?.name || 'اختر مركزا' : 'مركزك'}</strong>
-            <p className="muted">{thread === 'all' ? 'تظهر هذه الرسائل لجميع مسؤولي المراكز.' : 'هذه المحادثة مرئية للمديرية والمركز فقط.'}</p>
+            <strong>{activeThreadTitle}</strong>
+            <p className="muted">{activeThreadDescription}</p>
+          </div>
+          <div className="chat-stat-grid" aria-label="ملخص المحادثة">
+            <div>
+              <span>الرسائل</span>
+              <strong>{messageCountLabel}</strong>
+            </div>
+            <div>
+              <span>الوضع</span>
+              <strong>{canSend ? 'متاح' : 'قراءة فقط'}</strong>
+            </div>
           </div>
           <input className="input chat-search" type="search" value={chatSearch} onChange={(event) => setChatSearch(event.target.value)} placeholder="بحث في الرسائل" />
         </aside>
         <section className="panel chat-panel">
+          <div className="chat-conversation-header">
+            <div className="chat-conversation-main">
+              <span className="chat-conversation-icon" aria-hidden>{navIconFor(thread === 'all' ? '/admin/centers' : '/admin/chat')}</span>
+              <div>
+                <strong>{activeThreadTitle}</strong>
+                <p>{activeThreadDescription}</p>
+              </div>
+            </div>
+            <div className="chat-conversation-status">
+              <span aria-hidden />
+              <strong>{canSend ? 'جاهز للإرسال' : 'للقراءة فقط'}</strong>
+            </div>
+          </div>
           <div className="chat-messages" aria-live="polite">
             {filteredMessages.map((message) => {
               const own = message.senderId === currentUser.id;
@@ -1971,22 +2115,28 @@ function ChatPage({ token, currentUser, admin }: { token: string; currentUser: U
             <div ref={bottomRef} />
           </div>
           <form className="chat-composer" onSubmit={send}>
-            <textarea
-              className="textarea"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
-                  event.currentTarget.form?.requestSubmit();
-                }
-              }}
-              placeholder={canSend ? 'اكتب رسالتك...' : 'الرد متاح في محادثة المركز الخاصة فقط'}
-              disabled={!canSend || sending}
-              maxLength={2000}
-              required
-            />
-            <button className="btn primary" type="submit" disabled={!canSend || sending || !draft.trim()}>{sending ? 'جار الإرسال...' : 'إرسال'}</button>
+            <div className="chat-composer-field">
+              <textarea
+                className="textarea"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
+                placeholder={canSend ? 'اكتب رسالتك...' : 'الرد متاح في محادثة المركز الخاصة فقط'}
+                disabled={!canSend || sending}
+                maxLength={2000}
+                required
+              />
+              <span className="chat-draft-count">{draftCount}/2000</span>
+            </div>
+            <button className="btn primary chat-send-button" type="submit" disabled={!canSend || sending || !draft.trim()}>
+              <span>{sending ? 'جار الإرسال...' : 'إرسال'}</span>
+              <span className="chat-send-icon" aria-hidden><NavSvg><path d="m22 2-7 20-4-9-9-4 20-7Z" /><path d="M22 2 11 13" /></NavSvg></span>
+            </button>
           </form>
           {!canSend && <p className="muted chat-note">الرسائل العامة للقراءة فقط لمسؤولي المراكز. استخدم محادثة المركز للرد على المديرية.</p>}
           {(error || loadError) && <p className="error">{error || loadError}</p>}

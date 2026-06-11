@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   activitiesController,
+  assistantController,
   authController,
   chatController,
   centersController,
@@ -27,6 +28,8 @@ router.post("/auth/login", authRateLimit, asyncHandler(authController.login));
 router.get("/auth/me", auth, asyncHandler(authController.me));
 router.patch("/auth/me", auth, asyncHandler(authController.updateMe));
 router.patch("/auth/password", auth, asyncHandler(authController.changePassword));
+
+router.post("/assistant/chat", auth, asyncHandler(assistantController.chat));
 
 router.post("/media/images", auth, uploadRateLimit, imageUpload.single("file"), asyncHandler(mediaController.uploadImage));
 

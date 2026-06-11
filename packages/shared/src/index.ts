@@ -124,6 +124,18 @@ export const monthlyReportUploadBodySchema = z.object({
   replace: z.coerce.boolean().default(false)
 }).strict();
 
+export const assistantChatSchema = z.object({
+  message: text(1, 2000),
+  currentPath: z.string().trim().max(160).regex(/^\/[A-Za-z0-9/_?=&.-]*$/).optional(),
+  history: z
+    .array(z.object({
+      role: z.enum(["user", "assistant"]),
+      content: text(1, 2000)
+    }).strict())
+    .max(12)
+    .default([])
+}).strict();
+
 export type Paginated<T> = {
   items: T[];
   page: number;
@@ -190,6 +202,18 @@ export type MonthlyReportUploadResponse = {
   message: string;
 };
 
+export type AssistantAction = {
+  label: string;
+  href?: string;
+  intent?: string;
+};
+
+export type AssistantChatResponse = {
+  answer: string;
+  actions: AssistantAction[];
+  mode: "ai" | "guided";
+};
+
 export type AuthRegisterInput = z.infer<typeof authRegisterSchema>;
 export type AuthLoginInput = z.infer<typeof authLoginSchema>;
 export type PasswordChangeInput = z.infer<typeof passwordChangeSchema>;
@@ -209,3 +233,4 @@ export type Role = z.infer<typeof RoleSchema>;
 export type MonthlyReportQueryInput = z.infer<typeof monthlyReportQuerySchema>;
 export type PaginationQueryInput = z.infer<typeof paginationQuerySchema>;
 export type MonthlyReportUploadBodyInput = z.infer<typeof monthlyReportUploadBodySchema>;
+export type AssistantChatInput = z.infer<typeof assistantChatSchema>;

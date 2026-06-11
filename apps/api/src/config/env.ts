@@ -22,7 +22,17 @@ const envSchema = z
     RAILWAY_PUBLIC_DOMAIN: z.string().optional(),
     EXCEL_MAX_UPLOAD_MB: z.coerce.number().int().positive().max(10).default(5),
     JSON_BODY_LIMIT: z.string().default("2mb"),
-    TRUST_PROXY: z.coerce.boolean().default(false)
+    TRUST_PROXY: z.coerce.boolean().default(false),
+    OPENAI_API_KEY: z.string().optional(),
+    OPENAI_MODEL: z.string().default("gpt-4o-mini"),
+    GEMINI_API_KEY: z.string().optional(),
+    GOOGLE_API_KEY: z.string().optional(),
+    GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
+    XAI_API_KEY: z.string().optional(),
+    GROK_API_KEY: z.string().optional(),
+    GROK_MODEL: z.string().default("grok-4.3"),
+    OPENROUTER_API_KEY: z.string().optional(),
+    OPENROUTER_MODEL: z.string().default("openai/gpt-4o-mini")
   })
   .transform((value) => {
     const isDeployed = value.NODE_ENV === "production" || Boolean(value.RAILWAY_PUBLIC_DOMAIN);

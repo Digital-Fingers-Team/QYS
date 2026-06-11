@@ -1,4 +1,5 @@
 export { activitiesController } from "./activities.controller";
+export { assistantController } from "./assistant.controller";
 export { authController } from "./auth.controller";
 export { chatController } from "./chat.controller";
 export { centersController } from "./centers.controller";
