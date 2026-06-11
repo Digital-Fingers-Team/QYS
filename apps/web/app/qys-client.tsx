@@ -146,7 +146,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         </div>
         <div className="auth-fields">
           {mode === 'signup' && <label className="form-group">الاسم الكامل<input className="input form-control" name="name" placeholder="أدخل اسمك الكامل" required /></label>}
-          <label className="form-group">البريد الإلكتروني<input className="input form-control" name="email" type="email" placeholder="admin@example.com" defaultValue={mode === 'login' ? 'admin@example.com' : ''} required /></label>
+          <label className="form-group">البريد الإلكتروني<input className="input form-control" name="email" type="email" placeholder="البريد الإلكتروني" required /></label>
           <label className="form-group">كلمة المرور<input className="input form-control" name="password" type="password" minLength={mode === 'signup' ? 6 : 1} maxLength={128} placeholder={mode === 'signup' ? '6 أحرف على الأقل' : 'كلمة المرور'} required /></label>
           {mode === 'signup' && <CenterSelect centers={centers} required />}
         </div>
@@ -1953,11 +1953,12 @@ function ChatPage({ token, currentUser, admin }: { token: string; currentUser: U
           <div className="chat-messages" aria-live="polite">
             {filteredMessages.map((message) => {
               const own = message.senderId === currentUser.id;
+              const senderName = message.sender?.name || (message.senderRole === 'DIRECTORATE_MANAGER' ? 'المديرية' : 'المركز');
               return (
                 <article key={message.id} className={`chat-message ${own ? 'own' : ''}`}>
                   <div className="chat-bubble">
                     <div className="chat-message-meta">
-                      <strong>{message.sender?.name || (message.senderRole === 'DIRECTORATE_MANAGER' ? 'المديرية' : 'المركز')}</strong>
+                      {!own && <strong>{senderName}</strong>}
                       <span>{formatChatTime(message.createdAt)}</span>
                     </div>
                     <p>{message.body}</p>
@@ -2476,8 +2477,9 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
   const [month, setMonth] = useState(currentMonthValue());
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const isManager = canManageAccounts(currentUser.role);
-  const { items: centers } = usePaginatedData<Center>('/centers', token, 100, '', isManager);
+  const canManageAllCenters = canManageAccounts(currentUser.role);
+  const isCenterManager = currentUser.role === 'CENTER_MANAGER';
+  const { items: centers } = usePaginatedData<Center>('/centers', token, 100, '', canManageAllCenters);
   const { data: summary, load: loadSummary } = useData<MonthlyReportsSummary>(`/monthly-reports/summary?month=${month}`, token, null);
   const { items: reports, load: loadReports, page: reportsPage, totalPages: reportsTotalPages, setPage: setReportsPage } = usePaginatedData<MonthlyReportRow>(`/monthly-reports?month=${month}`, token, 20);
 
@@ -2530,56 +2532,67 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
     }
   }
 
-  const reportAlerts: AlertItem[] = [
+  const rejectedUploadExists = (summary?.latestUploads || []).some((upload) => upload.status === 'REJECTED');
+  const hasUploadedCurrentReport = (summary?.uploadedCenters || 0) > 0;
+  const reportAlerts: AlertItem[] = (isCenterManager ? [
+    hasUploadedCurrentReport
+      ? { title: 'تم رفع تقرير هذا الشهر', detail: `تم تسجيل تقرير ${formatMonthArabic(month)} لمركزك.`, tone: 'success' }
+      : { title: 'تقرير الشهر غير مرفوع', detail: `ارفع ملف تقرير ${formatMonthArabic(month)} قبل نهاية الشهر.`, tone: 'danger' },
+    rejectedUploadExists ? { title: 'ملف يحتاج مراجعة', detail: 'يوجد ملف مرفوض، ارفع نسخة صحيحة من التقرير.', tone: 'warning' } : undefined,
+    reports.length > 0 ? { title: 'سجل التقرير متاح', detail: 'يمكنك مراجعة آخر ملف مرفوع وبياناته من الجدول.', tone: 'info' } : undefined
+  ] : [
     (summary?.missingCentersTotal || 0) > 0 ? { title: 'مراكز لم ترفع التقرير', detail: `${summary?.missingCentersTotal || 0} مركز لم يرفع تقرير ${formatMonthArabic(month)}.`, tone: 'danger' } : { title: 'اكتمل الرفع', detail: 'لا توجد مراكز متأخرة في الصفحة الحالية.', tone: 'success' },
-    (summary?.latestUploads || []).some((upload) => upload.status === 'REJECTED') ? { title: 'ملفات مرفوضة', detail: 'توجد ملفات Excel مرفوضة تحتاج إعادة رفع.', tone: 'warning' } : undefined,
+    rejectedUploadExists ? { title: 'ملفات مرفوضة', detail: 'توجد ملفات Excel مرفوضة تحتاج إعادة رفع.', tone: 'warning' } : undefined,
     reports.length > 0 ? { title: 'سجل تدقيق متاح', detail: 'يمكنك متابعة الرفع والاستبدال من آخر الملفات والنشاطات.', tone: 'info' } : undefined
-  ].filter(Boolean) as AlertItem[];
+  ]).filter(Boolean) as AlertItem[];
 
   return (
     <>
-      <Header title="التقارير الشهرية" subtitle="رفع ملف Excel للمركز وتجميع بيانات الشهر تلقائياً." />
+      <Header
+        title={isCenterManager ? 'تقرير المركز الشهري' : 'التقارير الشهرية'}
+        subtitle={isCenterManager ? 'ارفع ملف Excel وتابع حالة تقرير مركزك لهذا الشهر.' : 'رفع ملفات Excel للمراكز وتجميع بيانات الشهر تلقائياً.'}
+      />
       <div className="panel form-grid reports-toolbar">
-        {isManager && <div className="actions">
+        <div className="actions">
           <button className={`btn ${month === currentMonthValue() ? 'primary' : ''}`} type="button" onClick={() => setMonth(currentMonthValue())}>الشهر الحالي</button>
           <button className={`btn ${month === previousMonthValue() ? 'primary' : ''}`} type="button" onClick={() => setMonth(previousMonthValue())}>الشهر الماضي</button>
-        </div>}
+        </div>
         <label className="grid">
           <span className="muted">الشهر</span>
           <ArabicMonthPicker value={month} onChange={setMonth} />
         </label>
         <button className="btn" type="button" onClick={() => download(`/monthly-reports/template?month=${month}`)}>تحميل القالب</button>
-        {isManager && <button className="btn primary" type="button" onClick={() => download(`/monthly-reports/export?month=${month}`)}>Download Monthly Report</button>}
+        {canManageAllCenters && <button className="btn primary" type="button" onClick={() => download(`/monthly-reports/export?month=${month}`)}>تصدير تقرير الشهر</button>}
       </div>
 
       <form className="panel grid" onSubmit={upload} style={{ marginTop: 16 }}>
-        {isManager && <CenterSelect centers={centers} required />}
+        {canManageAllCenters && <CenterSelect centers={centers} required />}
         <input className="input" name="file" type="file" accept=".xlsx" required />
         <button className="btn primary" disabled={loading}>{loading ? 'جاري الرفع...' : 'رفع ملف Excel'}</button>
         {message && <p className={message.includes('بنجاح') || message.includes('تم') ? 'muted' : 'error'}>{message}</p>}
       </form>
 
       <div className="grid stats" style={{ marginTop: 16 }}>
-        <Stat title="إجمالي الإيرادات" value={formatMoney(summary?.totalRevenues || 0)} />
-        <Stat title="إجمالي المصروفات" value={formatMoney(summary?.totalExpenses || 0)} />
-        <Stat title="المراكز التي رفعت" value={summary?.uploadedCenters || 0} />
-        <Stat title="إجمالي الندوات" value={summary?.totalSeminars || 0} />
+        <Stat title={isCenterManager ? 'إيرادات المركز' : 'إجمالي الإيرادات'} value={formatMoney(summary?.totalRevenues || 0)} />
+        <Stat title={isCenterManager ? 'مصروفات المركز' : 'إجمالي المصروفات'} value={formatMoney(summary?.totalExpenses || 0)} />
+        <Stat title={isCenterManager ? 'حالة الرفع' : 'المراكز التي رفعت'} value={isCenterManager ? (hasUploadedCurrentReport ? 'مرفوع' : 'غير مرفوع') : summary?.uploadedCenters || 0} />
+        <Stat title={isCenterManager ? 'ندوات المركز' : 'إجمالي الندوات'} value={summary?.totalSeminars || 0} />
       </div>
 
       <div className="dashboard-grid" style={{ marginTop: 16 }}>
-        <AlertPanel title="تنبيهات التقارير" alerts={reportAlerts} />
-        <MiniBarChart title="تحليل مالي للشهر" items={[
+        <AlertPanel title={isCenterManager ? 'حالة تقرير المركز' : 'تنبيهات التقارير'} alerts={reportAlerts} />
+        <MiniBarChart title={isCenterManager ? 'تحليل مالي للمركز' : 'تحليل مالي للشهر'} items={[
           { label: 'الإيرادات', value: summary?.totalRevenues || 0, tone: 'success' },
           { label: 'المصروفات', value: summary?.totalExpenses || 0, tone: 'warning' }
         ]} valueLabel={(value) => formatMoney(value)} />
       </div>
 
       <div className="panel table-wrap" style={{ marginTop: 16 }}>
-        <h3>بيانات المراكز</h3>
+        <h3>{isCenterManager ? 'بيانات التقرير' : 'بيانات المراكز'}</h3>
         <table className="table">
-          <thead><tr><th>المركز</th><th>الفعالية</th><th>الشهر</th><th>الإيرادات</th><th>المصروفات</th><th>الندوات</th><th>الملف</th></tr></thead>
+          <thead><tr>{canManageAllCenters && <th>المركز</th>}<th>الفعالية</th><th>الشهر</th><th>الإيرادات</th><th>المصروفات</th><th>الندوات</th><th>الملف</th></tr></thead>
           <tbody>{reports.map((report) => <tr key={report.id}>
-            <td>{report.centerName}</td>
+            {canManageAllCenters && <td>{report.centerName}</td>}
             <td>{report.eventName || '-'}</td>
             <td>{formatMonthArabic(report.month)}</td>
             <td>{formatMoney(report.revenues)}</td>
@@ -2587,39 +2600,48 @@ function ReportsAdmin({ token, currentUser }: { token: string; currentUser: User
             <td>{report.seminarsCount}</td>
             <td>{report.sourceFileName || '-'}</td>
           </tr>)}
-          {reports.length === 0 && <tr><td colSpan={7}><EmptyState title="لا توجد تقارير لهذا الشهر" detail="ارفع ملف Excel أو اختر شهر آخر." /></td></tr>}
+          {reports.length === 0 && <tr><td colSpan={canManageAllCenters ? 7 : 6}><EmptyState title="لا توجد تقارير لهذا الشهر" detail="ارفع ملف Excel أو اختر شهر آخر." /></td></tr>}
           </tbody>
         </table>
       </div>
       <PaginationControls page={reportsPage} totalPages={reportsTotalPages} setPage={setReportsPage} />
 
       <div className="panel table-wrap" style={{ marginTop: 16 }}>
-        <h3>إحصائيات الأشهر الأخيرة</h3>
+        <h3>{isCenterManager ? 'سجل الأشهر الأخيرة' : 'إحصائيات الأشهر الأخيرة'}</h3>
         <table className="table">
-          <thead><tr><th>الشهر</th><th>الإيرادات</th><th>المصروفات</th><th>الندوات</th><th>المراكز</th></tr></thead>
+          <thead><tr><th>الشهر</th><th>الإيرادات</th><th>المصروفات</th><th>الندوات</th><th>{isCenterManager ? 'التقرير' : 'المراكز'}</th></tr></thead>
           <tbody>{(summary?.monthlyStatistics || []).map((item) => <tr key={item.month}>
             <td>{formatMonthArabic(item.month)}</td>
             <td>{formatMoney(item.totalRevenues)}</td>
             <td>{formatMoney(item.totalExpenses)}</td>
             <td>{item.totalSeminars}</td>
-            <td>{item.uploadedCenters}</td>
+            <td>{isCenterManager ? (item.uploadedCenters > 0 ? 'مرفوع' : 'غير مرفوع') : item.uploadedCenters}</td>
           </tr>)}
-          {(summary?.monthlyStatistics || []).length === 0 && <tr><td colSpan={5}><EmptyState title="لا توجد إحصائيات شهرية بعد" detail="ستظهر الإحصائيات بعد رفع التقارير." /></td></tr>}
+          {(summary?.monthlyStatistics || []).length === 0 && <tr><td colSpan={5}><EmptyState title="لا توجد إحصائيات شهرية بعد" detail={isCenterManager ? 'ستظهر هنا بيانات مركزك بعد رفع التقرير.' : 'ستظهر الإحصائيات بعد رفع التقارير.'} /></td></tr>}
           </tbody>
         </table>
       </div>
 
       <div className="grid cards" style={{ marginTop: 16 }}>
+        {isCenterManager ? (
+          <div className="panel">
+            <h3>حالة تقرير الشهر</h3>
+            <p className={hasUploadedCurrentReport ? 'muted' : 'error'}>
+              {hasUploadedCurrentReport ? `تم رفع تقرير ${formatMonthArabic(month)} بنجاح.` : `لم يتم رفع تقرير ${formatMonthArabic(month)} بعد.`}
+            </p>
+          </div>
+        ) : (
+          <div className="panel">
+            <h3>{(summary?.missingCenters || []).length === 0 ? 'اكتمل رفع التقارير' : 'المراكز التي لم ترفع التقرير'}</h3>
+            {(summary?.missingCenters || []).length === 0 && <p className="muted">لا توجد مراكز متأخرة عن رفع تقرير هذا الشهر.</p>}
+            {(summary?.missingCenters || []).map((center) => <p key={center.id} className="muted">{center.name} - {center.location}</p>)}
+          </div>
+        )}
         <div className="panel">
-          <h3>{(summary?.missingCenters || []).length === 0 ? 'اكتمل رفع التقارير' : 'المراكز التي لم ترفع التقرير'}</h3>
-          {(summary?.missingCenters || []).length === 0 && <p className="muted">لا توجد مراكز متأخرة عن رفع تقرير هذا الشهر.</p>}
-          {(summary?.missingCenters || []).map((center) => <p key={center.id} className="muted">{center.name} - {center.location}</p>)}
-        </div>
-        <div className="panel">
-          <h3>أحدث عمليات الرفع</h3>
+          <h3>{isCenterManager ? 'آخر ملفات المركز' : 'أحدث عمليات الرفع'}</h3>
           <AuditTimeline items={(summary?.latestUploads || []).map((upload) => ({
             title: upload.status === 'REJECTED' ? 'ملف مرفوض' : upload.status === 'ACCEPTED' ? 'ملف مقبول' : 'تحديث ملف',
-            detail: `${upload.centerName || '-'} - ${formatMonthArabic(upload.month)} - ${upload.originalName}`,
+            detail: isCenterManager ? `${formatMonthArabic(upload.month)} - ${upload.originalName}` : `${upload.centerName || '-'} - ${formatMonthArabic(upload.month)} - ${upload.originalName}`,
             tone: upload.status === 'REJECTED' ? 'danger' : upload.status === 'ACCEPTED' ? 'success' : 'info'
           }))} />
           {(summary?.latestUploads || []).length === 0 && <EmptyState title="لا توجد عمليات رفع حديثة" detail="ستظهر هنا آخر الملفات المرفوعة." />}

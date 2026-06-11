@@ -1255,10 +1255,12 @@ export const db = {
       ]);
       return paginated(items as Array<Pick<CenterRecord, "id" | "name" | "location">>, total, page, pageSize);
     },
-    async statistics(limit = 6) {
+    async statistics(limit = 6, filter?: { centerId?: number }) {
       await ensureMongoConnected();
-      return cache.getOrSet("monthly", cacheKey({ scope: "statistics", limit }), async () => {
+      return cache.getOrSet("monthly", cacheKey({ scope: "statistics", limit, centerId: filter?.centerId }), async () => {
+        const match = clean({ centerId: filter?.centerId });
         const groups = await MongoMonthlyReport.aggregate<{ _id: string; totalRevenues: number; totalExpenses: number; totalSeminars: number; uploadedCenters: number }>([
+          ...(Object.keys(match).length > 0 ? [{ $match: match }] : []),
           { $group: { _id: "$month", totalRevenues: { $sum: "$revenues" }, totalExpenses: { $sum: "$expenses" }, totalSeminars: { $sum: "$seminarsCount" }, uploadedCenters: { $sum: 1 } } },
           { $sort: { _id: -1 } },
           { $limit: limit }

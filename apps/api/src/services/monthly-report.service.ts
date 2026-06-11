@@ -140,47 +140,23 @@ export async function listMonthlyReports(month: string, req: AuthedRequest, pagi
 }
 
 export async function monthlySummary(month: string, req: AuthedRequest, pagination: PaginationQueryInput): Promise<MonthlyReportsSummary> {
-  {
-    const centerScope = req.user?.role === "CENTER_MANAGER" ? req.user.centerId ?? undefined : undefined;
-    const [summary, missingCenters, latestUploads, monthlyStatistics] = await Promise.all([
-      db.monthlyReports.summary({ month, centerId: centerScope }),
-      db.monthlyReports.missingCenters({ month, centerId: centerScope, page: pagination.page, pageSize: pagination.pageSize }),
-      db.uploadedFiles.list({ month, centerId: centerScope, limit: 8 }),
-      db.monthlyReports.statistics(6)
-    ]);
-    return {
-      month,
-      totalRevenues: summary.totalRevenues,
-      totalExpenses: summary.totalExpenses,
-      totalSeminars: summary.totalSeminars,
-      uploadedCenters: summary.uploadedCenterIds.length,
-      missingCenters: missingCenters.items,
-      missingCentersTotal: missingCenters.total,
-      missingCentersPage: missingCenters.page,
-      missingCentersPageSize: missingCenters.pageSize,
-      latestUploads,
-      monthlyStatistics
-    };
-  }
-  const centerScope = req.user?.role === "CENTER_MANAGER" ? req.user?.centerId ?? undefined : undefined;
-  const [allCenters, reports, latestUploads, monthlyStatistics] = await Promise.all([
-    db.centers.list(),
-    db.monthlyReports.list({ month, centerId: centerScope }),
+  const centerScope = req.user?.role === "CENTER_MANAGER" ? req.user.centerId ?? undefined : undefined;
+  const [summary, missingCenters, latestUploads, monthlyStatistics] = await Promise.all([
+    db.monthlyReports.summary({ month, centerId: centerScope }),
+    db.monthlyReports.missingCenters({ month, centerId: centerScope, page: pagination.page, pageSize: pagination.pageSize }),
     db.uploadedFiles.list({ month, centerId: centerScope, limit: 8 }),
-    db.monthlyReports.statistics(6)
+    db.monthlyReports.statistics(6, centerScope ? { centerId: centerScope } : undefined)
   ]);
-  const centers = centerScope ? allCenters.filter((center) => center.id === centerScope) : allCenters;
-  const uploaded = new Set(reports.map((report) => report.centerId));
   return {
     month,
-    totalRevenues: reports.reduce((total, report) => total + report.revenues, 0),
-    totalExpenses: reports.reduce((total, report) => total + report.expenses, 0),
-    totalSeminars: reports.reduce((total, report) => total + report.seminarsCount, 0),
-    uploadedCenters: uploaded.size,
-    missingCenters: centers.filter((center) => !uploaded.has(center.id)).map((center) => ({ id: center.id, name: center.name, location: center.location })),
-    missingCentersTotal: centers.filter((center) => !uploaded.has(center.id)).length,
-    missingCentersPage: 1,
-    missingCentersPageSize: centers.length,
+    totalRevenues: summary.totalRevenues,
+    totalExpenses: summary.totalExpenses,
+    totalSeminars: summary.totalSeminars,
+    uploadedCenters: summary.uploadedCenterIds.length,
+    missingCenters: missingCenters.items,
+    missingCentersTotal: missingCenters.total,
+    missingCentersPage: missingCenters.page,
+    missingCentersPageSize: missingCenters.pageSize,
     latestUploads,
     monthlyStatistics
   };

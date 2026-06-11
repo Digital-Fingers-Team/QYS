@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import type { User } from './types';
 
 const storageKey = 'qys_session';
+const sessionUpdatedEvent = 'qys_session_updated';
 
 export function readSession(): { token: string; user: User } | null {
   if (typeof window === 'undefined') return null;
@@ -21,6 +22,7 @@ export function readSession(): { token: string; user: User } | null {
 
 export function writeSession(token: string, user: User) {
   window.sessionStorage.setItem(storageKey, JSON.stringify({ token, user }));
+  window.dispatchEvent(new CustomEvent(sessionUpdatedEvent, { detail: { token, user } }));
 }
 
 export function useSession(required = true) {
@@ -49,6 +51,25 @@ export function useSession(required = true) {
       })
       .finally(() => setReady(true));
   }, [required, router]);
+
+  useEffect(() => {
+    function syncSession(event: Event) {
+      const detail = (event as CustomEvent<{ token: string; user: User }>).detail;
+      if (detail?.token && detail.user) {
+        setToken(detail.token);
+        setUser(detail.user);
+        return;
+      }
+      const saved = readSession();
+      if (saved) {
+        setToken(saved.token);
+        setUser(saved.user);
+      }
+    }
+
+    window.addEventListener(sessionUpdatedEvent, syncSession);
+    return () => window.removeEventListener(sessionUpdatedEvent, syncSession);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
