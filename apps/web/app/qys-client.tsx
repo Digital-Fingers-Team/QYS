@@ -98,30 +98,9 @@ function CenterSelect({ centers, defaultValue = '', required = false }: { center
 }
 
 const qalyubiaDirectoratePage = 'https://www.facebook.com/102018988020631/';
-const authSocialActions: Array<{ label: string; href: string; icon: 'facebook' }> = [
-  { label: 'Qalyubia Directorate Facebook', href: qalyubiaDirectoratePage, icon: 'facebook' }
-];
 
-function AuthSocialIcon({ icon }: { icon: (typeof authSocialActions)[number]['icon'] }) {
-  if (icon === 'facebook') {
-    return <span className="auth-social-brand auth-social-facebook" aria-hidden="true">f</span>;
-  }
-  return null;
-}
-
-function AuthSocialActions() {
-  return (
-    <div className="auth-social-actions" aria-label="Social links">
-      {authSocialActions.map((action) => {
-        const content = <AuthSocialIcon icon={action.icon} />;
-        return (
-          <a key={action.label} className="auth-social-button" href={action.href} aria-label={action.label} target="_blank" rel="noreferrer">
-            {content}
-          </a>
-        );
-      })}
-    </div>
-  );
+function FacebookMark() {
+  return <span className="facebook-mark" aria-hidden="true">f</span>;
 }
 
 export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
@@ -177,7 +156,6 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
           {mode === 'login' ? 'ليس لديك حساب؟ ' : 'لديك حساب بالفعل؟ '}
           <Link href={mode === 'login' ? '/signup' : '/login'}>{mode === 'login' ? 'إنشاء حساب جديد' : 'سجل دخولك هنا'}</Link>
         </p>
-        <AuthSocialActions />
       </form>
     </main>
   );
@@ -323,6 +301,14 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
           ))}
           {canOpenAdmin(user.role) && !admin && <Link className="nav-link" href="/admin"><span className="nav-icon" aria-hidden>{navIconFor('/admin')}</span><span>لوحة الإدارة</span></Link>}
         </nav>
+        {!admin && user.role === 'USER' && (
+          <div className="sidebar-footer">
+            <a className="sidebar-facebook-link" href={qalyubiaDirectoratePage} target="_blank" rel="noreferrer" aria-label="Qalyubia Directorate Facebook">
+              <FacebookMark />
+              <span>صفحة المديرية</span>
+            </a>
+          </div>
+        )}
       </aside>
       <main className="main-content">
         <header className="top-header">
@@ -332,9 +318,6 @@ function Shell({ children, admin = false }: { children: React.ReactNode; admin?:
             </button>
           </div>
           <div className="header-right">
-            <a className="dashboard-facebook-link" href={qalyubiaDirectoratePage} target="_blank" rel="noreferrer" aria-label="Qalyubia Directorate Facebook">
-              <span className="auth-social-brand auth-social-facebook" aria-hidden="true">f</span>
-            </a>
             {hasUserPoints(user.role) && <div className="points-badge"><span>{user.points || 0}</span><span>نقطة</span></div>}
             <Link className="user-profile-header" href={settingsHref} title={t.settings}>
               <span className="user-avatar">{user.avatar ? <img src={user.avatar} alt="" /> : userInitial(user)}</span>
@@ -2041,13 +2024,12 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
       </form>}
       <div className="panel table-wrap" style={{ marginTop: 16 }}>
         <table className="table">
-          <thead><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>المركز</th><th>الحالة</th><th></th></tr></thead>
+          <thead><tr><th>الاسم</th><th>البريد</th><th>المركز</th><th>الحالة</th><th></th></tr></thead>
           <tbody>{users.map((user) => {
             const center = centers.find((item) => item.id === user.centerId);
             return <tr key={user.id}>
               <td>{user.name}</td>
               <td>{user.email}</td>
-              <td>{roleLabel(user.role)}</td>
               <td>{center?.name || '-'}</td>
               <td><span className="badge">{user.isActive ? 'نشط' : 'معطل'}</span></td>
               <td>
@@ -2058,7 +2040,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
               </td>
             </tr>;
           })}
-          {users.length === 0 && <tr><td colSpan={6}><EmptyState title="لا يوجد مستخدمون للعرض" detail="ستظهر الحسابات هنا بعد إضافتها." /></td></tr>}
+          {users.length === 0 && <tr><td colSpan={5}><EmptyState title="لا يوجد مستخدمون للعرض" detail="ستظهر الحسابات هنا بعد إضافتها." /></td></tr>}
           </tbody>
         </table>
       </div>
