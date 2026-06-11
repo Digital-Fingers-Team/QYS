@@ -556,6 +556,10 @@ function mongoIn<T>(values: T[]) {
   return mongoose.trusted({ $in: values });
 }
 
+function mongoNin<T>(values: T[]) {
+  return mongoose.trusted({ $nin: values });
+}
+
 function mongoExists(value: boolean) {
   return mongoose.trusted({ $exists: value });
 }
@@ -1244,7 +1248,7 @@ export const db = {
       const { page, pageSize } = pageFilter(filter);
       const uploaded = (await MongoMonthlyReport.distinct("centerId", filter.centerId ? { month: filter.month, centerId: filter.centerId } : { month: filter.month }).exec()) as number[];
       if (filter.centerId && uploaded.includes(filter.centerId)) return paginated([], 0, page, pageSize);
-      const where = filter.centerId ? { id: filter.centerId } : { id: { $nin: uploaded } };
+      const where = filter.centerId ? { id: filter.centerId } : { id: mongoNin(uploaded) };
       const [items, total] = await Promise.all([
         MongoCenter.find(where, { _id: 0, id: 1, name: 1, location: 1 }).sort({ id: 1 }).skip((page - 1) * pageSize).limit(pageSize).lean().exec(),
         MongoCenter.countDocuments(where).exec()

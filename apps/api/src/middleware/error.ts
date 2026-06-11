@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import multer from "multer";
 import { ZodError } from "zod";
 import { isApiError } from "../errors/api-error";
+import { env } from "../config/env";
 
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
   if (isApiError(err)) {
@@ -21,6 +22,10 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
 
   if (err instanceof SyntaxError && "body" in err) {
     return res.status(400).json({ message: "Invalid JSON body.", code: "INVALID_JSON" });
+  }
+
+  if (env.NODE_ENV !== "production") {
+    console.error(err);
   }
 
   return res.status(500).json({ message: "Internal server error" });
