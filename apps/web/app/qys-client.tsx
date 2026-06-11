@@ -2024,13 +2024,11 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
       </form>}
       <div className="panel table-wrap" style={{ marginTop: 16 }}>
         <table className="table">
-          <thead><tr><th>الاسم</th><th>البريد</th><th>المركز</th><th>الحالة</th><th></th></tr></thead>
+          <thead><tr><th>الاسم</th><th>البريد</th><th>الحالة</th><th></th></tr></thead>
           <tbody>{users.map((user) => {
-            const center = centers.find((item) => item.id === user.centerId);
             return <tr key={user.id}>
               <td>{user.name}</td>
               <td>{user.email}</td>
-              <td>{center?.name || '-'}</td>
               <td><span className="badge">{user.isActive ? 'نشط' : 'معطل'}</span></td>
               <td>
                 <div className="inline-actions">
@@ -2040,7 +2038,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
               </td>
             </tr>;
           })}
-          {users.length === 0 && <tr><td colSpan={5}><EmptyState title="لا يوجد مستخدمون للعرض" detail="ستظهر الحسابات هنا بعد إضافتها." /></td></tr>}
+          {users.length === 0 && <tr><td colSpan={4}><EmptyState title="لا يوجد مستخدمون للعرض" detail="ستظهر الحسابات هنا بعد إضافتها." /></td></tr>}
           </tbody>
         </table>
       </div>
