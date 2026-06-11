@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap");
 
 :root {
   --primary: #2563eb;
@@ -65,7 +65,7 @@ html {
 body {
   background: var(--bg-body);
   color: var(--text-main);
-  font-family: "Cairo", "Segoe UI", Tahoma, sans-serif;
+  font-family: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, sans-serif;
   font-size: 15px;
   line-height: 1.55;
   overflow-x: hidden;
@@ -73,7 +73,7 @@ body {
 }
 
 [dir="ltr"] body {
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
 img,
@@ -522,6 +522,152 @@ h6 {
 
 .item-card {
   padding: 18px;
+}
+
+.idea-card-clickable {
+  cursor: pointer;
+}
+
+.idea-card-clickable:focus-visible {
+  outline: 3px solid var(--primary-light);
+  border-color: var(--primary);
+}
+
+.idea-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.52);
+  backdrop-filter: blur(3px);
+}
+
+.idea-detail-modal {
+  width: min(70vw, 880px);
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: 0 28px 80px -36px rgba(15, 23, 42, 0.72);
+}
+
+.idea-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--border-color);
+  background: linear-gradient(180deg, var(--bg-card), var(--bg-surface));
+}
+
+.idea-detail-header h2 {
+  margin-top: 10px;
+  color: var(--text-main);
+  font-size: 1.34rem;
+  font-weight: 900;
+}
+
+.idea-detail-close {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.idea-detail-close:hover,
+.idea-detail-close:focus-visible {
+  border-color: var(--border-hover);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  outline: none;
+}
+
+.idea-detail-body {
+  display: grid;
+  gap: 16px;
+  overflow: auto;
+  padding: 22px 24px;
+}
+
+.challenge-detail-image {
+  max-height: 240px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-surface);
+}
+
+.challenge-detail-image img {
+  width: 100%;
+  height: 100%;
+  max-height: 240px;
+  object-fit: cover;
+}
+
+.idea-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.idea-detail-grid div,
+.idea-detail-description {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.idea-detail-grid span,
+.idea-detail-description span {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.idea-detail-grid strong {
+  color: var(--text-main);
+  font-size: 0.96rem;
+  font-weight: 900;
+}
+
+.idea-detail-description p {
+  color: var(--text-main);
+  line-height: 1.8;
+}
+
+.idea-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-card);
+}
+
+.complaint-detail-actions {
+  flex-wrap: wrap;
+}
+
+.complaint-detail-select {
+  width: min(240px, 100%);
+  min-height: 38px;
 }
 
 .challenge-card-image {
@@ -1167,7 +1313,7 @@ h6 {
   gap: 4px;
   min-width: 180px;
   color: #0f172a;
-  font-family: "Cairo", "Segoe UI", Tahoma, sans-serif;
+  font-family: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, sans-serif;
   text-align: start;
 }
 
@@ -1606,6 +1752,83 @@ h6 {
 
 .account-context-metrics strong {
   color: var(--primary-dark);
+}
+
+.account-create-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding: 72px 24px 24px;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(3px);
+}
+
+.account-create-modal {
+  width: min(70vw, 900px);
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 96px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: 0 28px 80px -36px rgba(15, 23, 42, 0.72);
+}
+
+.account-create-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: linear-gradient(180deg, var(--bg-card), var(--bg-surface));
+}
+
+.account-create-header h2 {
+  margin-bottom: 4px;
+  color: var(--text-main);
+  font-size: 1.22rem;
+  font-weight: 900;
+}
+
+.account-create-close {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.account-create-close:hover,
+.account-create-close:focus-visible {
+  border-color: var(--border-hover);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  outline: none;
+}
+
+.account-create-form {
+  width: 100%;
+  align-items: end;
+  overflow: auto;
+  padding: 20px 22px 22px;
+}
+
+.account-create-form .btn.primary {
+  min-width: 150px;
+  justify-self: start;
 }
 
 .table-wrap,
@@ -3427,6 +3650,49 @@ tr:hover td {
   .account-directory-switch,
   .account-context-strip {
     grid-template-columns: 1fr;
+  }
+
+  .account-create-backdrop {
+    padding: 14px;
+  }
+
+  .account-create-modal {
+    width: 100%;
+    max-width: none;
+    max-height: calc(100vh - 28px);
+  }
+
+  .account-create-header,
+  .account-create-form {
+    padding-inline: 16px;
+  }
+
+  .idea-detail-backdrop {
+    padding: 14px;
+  }
+
+  .idea-detail-modal {
+    width: 100%;
+    max-width: none;
+    max-height: calc(100vh - 28px);
+  }
+
+  .idea-detail-header,
+  .idea-detail-body,
+  .idea-detail-actions {
+    padding-inline: 16px;
+  }
+
+  .idea-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .idea-detail-actions {
+    justify-content: stretch;
+  }
+
+  .idea-detail-actions .btn {
+    width: 100%;
   }
 
   .account-toolbar .btn {

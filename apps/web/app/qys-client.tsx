@@ -1032,6 +1032,7 @@ function isPublishedIdea(status: string) {
 function IdeasPage({ token, admin, viewOnly = false, centerApproval = false }: { token: string; admin: boolean; viewOnly?: boolean; centerApproval?: boolean }) {
   const { items: ideas, load, page, totalPages, setPage } = usePaginatedData<Idea>('/ideas', token, 20);
   const [message, setMessage] = useState('');
+  const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
   const readOnly = admin || viewOnly || centerApproval;
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -1056,15 +1057,16 @@ function IdeasPage({ token, admin, viewOnly = false, centerApproval = false }: {
       </form>}
       {message && <p className={message.startsWith('تم ') ? 'muted' : 'error'}>{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
-        {ideas.map((idea) => <IdeaCard key={idea.id} idea={idea} token={token} readOnly={readOnly} admin={admin} centerApproval={centerApproval} onDone={load} />)}
+        {ideas.map((idea) => <IdeaCard key={idea.id} idea={idea} token={token} readOnly={readOnly} admin={admin} centerApproval={centerApproval} onDone={load} onOpenDetails={admin ? setSelectedIdea : undefined} />)}
         {ideas.length === 0 && <EmptyState title="لا توجد أفكار للعرض" detail={readOnly ? 'ستظهر الأفكار بعد إرسالها أو اعتمادها.' : 'ابدأ بإرسال فكرة جديدة للمراجعة.'} />}
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
+      {selectedIdea && <IdeaDetailsModal idea={selectedIdea} token={token} onDone={load} onClose={() => setSelectedIdea(null)} />}
     </>
   );
 }
 
-function IdeaCard({ idea, token, readOnly, admin, centerApproval, onDone }: { idea: Idea; token: string; readOnly?: boolean; admin?: boolean; centerApproval?: boolean; onDone?: () => void }) {
+function IdeaCard({ idea, token, readOnly, admin, centerApproval, onDone, onOpenDetails }: { idea: Idea; token: string; readOnly?: boolean; admin?: boolean; centerApproval?: boolean; onDone?: () => void; onOpenDetails?: (idea: Idea) => void }) {
   const [voteCount, setVoteCount] = useState(idea.votes);
   const [hasVoted, setHasVoted] = useState(Boolean(idea.voted));
   const [voteMessage, setVoteMessage] = useState('');
@@ -1100,10 +1102,6 @@ function IdeaCard({ idea, token, readOnly, admin, centerApproval, onDone }: { id
       setIsVoting(false);
     }
   }
-  async function toggleVisibility() {
-    await api(`/ideas/${idea.id}/visibility`, { method: 'PATCH', body: JSON.stringify({ visibleToUsers: idea.visibleToUsers === false }) }, token);
-    onDone?.();
-  }
   async function review(status: 'ACTIVE' | 'REJECTED') {
     await api(`/ideas/${idea.id}/center-status`, { method: 'PATCH', body: JSON.stringify({ status }) }, token);
     onDone?.();
@@ -1111,16 +1109,28 @@ function IdeaCard({ idea, token, readOnly, admin, centerApproval, onDone }: { id
   const visibleToUsers = idea.visibleToUsers !== false;
   const canVote = !readOnly && isPublishedIdea(idea.status);
   const canReview = centerApproval && idea.status === 'PENDING';
+  const canOpenDetails = Boolean(onOpenDetails);
+  function openDetails() {
+    onOpenDetails?.(idea);
+  }
   return (
-    <article className="item-card">
+    <article
+      className={`item-card ${canOpenDetails ? 'idea-card-clickable' : ''}`}
+      role={canOpenDetails ? 'button' : undefined}
+      tabIndex={canOpenDetails ? 0 : undefined}
+      onClick={canOpenDetails ? openDetails : undefined}
+      onKeyDown={canOpenDetails ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openDetails();
+        }
+      } : undefined}
+    >
       <h3>{idea.title}</h3>
       <p className="muted">{idea.user?.name || 'مستخدم'} | {ideaStatusLabel(idea.status)}{admin ? ` | ${visibleToUsers ? 'ظاهرة للمستخدمين' : 'مخفية عن المستخدمين'}` : ''}</p>
       <p>{idea.description}</p>
       {canVote && <button className={hasVoted ? 'btn primary' : 'btn'} type="button" disabled={isVoting || hasVoted} onClick={vote}>{hasVoted ? `تم التصويت (${voteCount})` : isVoting ? 'جار التصويت...' : `تصويت (${voteCount})`}</button>}
       {voteMessage && <p className="error">{voteMessage}</p>}
-      {admin && <button className={visibleToUsers ? 'btn danger' : 'btn primary'} type="button" onClick={toggleVisibility}>
-        {visibleToUsers ? 'إخفاء عن المستخدمين' : 'إظهار للمستخدمين'}
-      </button>}
       {canReview && <div className="inline-actions" style={{ marginTop: 10 }}>
         <button className="btn primary" type="button" onClick={() => review('ACTIVE')}>قبول ونشر</button>
         <button className="btn danger" type="button" onClick={() => review('REJECTED')}>رفض</button>
@@ -1129,10 +1139,79 @@ function IdeaCard({ idea, token, readOnly, admin, centerApproval, onDone }: { id
   );
 }
 
+function IdeaDetailsModal({ idea, token, onDone, onClose }: { idea: Idea; token: string; onDone: () => Promise<void>; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const visibleToUsers = idea.visibleToUsers !== false;
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
+
+  async function toggleVisibility() {
+    setBusy(true);
+    try {
+      await api(`/ideas/${idea.id}/visibility`, { method: 'PATCH', body: JSON.stringify({ visibleToUsers: idea.visibleToUsers === false }) }, token);
+      await onDone();
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="idea-detail-backdrop" role="presentation" onClick={onClose}>
+      <section className="idea-detail-modal" role="dialog" aria-modal="true" aria-labelledby="idea-detail-title" onClick={(event) => event.stopPropagation()}>
+        <div className="idea-detail-header">
+          <div>
+            <span className={`badge ${visibleToUsers ? 'badge-success' : 'badge-warning'}`}>{visibleToUsers ? 'ظاهرة للمستخدمين' : 'مخفية عن المستخدمين'}</span>
+            <h2 id="idea-detail-title">{idea.title}</h2>
+            <p className="muted">فكرة رقم #{idea.id}</p>
+          </div>
+          <button className="idea-detail-close" type="button" onClick={onClose} aria-label="إغلاق">×</button>
+        </div>
+        <div className="idea-detail-body">
+          <div className="idea-detail-grid">
+            <div>
+              <span>صاحب الفكرة</span>
+              <strong>{idea.user?.name || 'مستخدم'}</strong>
+            </div>
+            <div>
+              <span>الحالة</span>
+              <strong>{ideaStatusLabel(idea.status)}</strong>
+            </div>
+            <div>
+              <span>التصويتات</span>
+              <strong>{idea.votes}</strong>
+            </div>
+            <div>
+              <span>تاريخ الإرسال</span>
+              <strong>{idea.createdAt ? new Date(idea.createdAt).toLocaleDateString('ar-EG') : '-'}</strong>
+            </div>
+          </div>
+          <div className="idea-detail-description">
+            <span>وصف الفكرة</span>
+            <p>{idea.description}</p>
+          </div>
+        </div>
+        <div className="idea-detail-actions">
+          <button className={visibleToUsers ? 'btn danger' : 'btn primary'} type="button" disabled={busy} onClick={toggleVisibility}>
+            {busy ? 'جار الحفظ...' : visibleToUsers ? 'إخفاء عن المستخدمين' : 'إظهار للمستخدمين'}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
   const { items: challenges, load, page, totalPages, setPage } = usePaginatedData<Challenge>('/challenges', token, 20);
   const [message, setMessage] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [selectedChallenge, setSelectedChallenge] = useState<Challenge | null>(null);
   const [createImageName, setCreateImageName] = useState('');
   const [challengeAreaScope, setChallengeAreaScope] = useState<'all' | 'custom'>('all');
   const [challengeAreas, setChallengeAreas] = useState<string[]>([]);
@@ -1270,10 +1349,11 @@ function ChallengesPage({ token, admin }: { token: string; admin: boolean }) {
       </div>}
       {message && <p className="error">{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
-        {challenges.map((challenge) => <ChallengeCard key={challenge.id} challenge={challenge} token={token} admin={admin} onDone={load} />)}
+        {challenges.map((challenge) => <ChallengeCard key={challenge.id} challenge={challenge} token={token} admin={admin} onDone={load} onOpenDetails={admin ? setSelectedChallenge : undefined} />)}
         {challenges.length === 0 && <EmptyState title="لا توجد تحديات للعرض" detail={admin ? 'استخدم زر إضافة تحدي لإنشاء أول تحدي.' : 'ستظهر التحديات المتاحة هنا عند نشرها.'} />}
       </div>
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
+      {selectedChallenge && <ChallengeDetailsModal challenge={selectedChallenge} token={token} onDone={load} onClose={() => setSelectedChallenge(null)} />}
     </>
   );
 }
@@ -1282,11 +1362,15 @@ function challengeDisplayStatus(status: string) {
   return status === 'ACTIVE' ? 'ACTIVE' : 'Soon';
 }
 
-function ChallengeCard({ challenge, token, admin, onDone }: { challenge: Challenge; token: string; admin?: boolean; onDone: () => void }) {
+function ChallengeCard({ challenge, token, admin, onDone, onOpenDetails }: { challenge: Challenge; token: string; admin?: boolean; onDone: () => void; onOpenDetails?: (challenge: Challenge) => void }) {
   const [showJoin, setShowJoin] = useState(false);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const targetAreasText = challenge.targetAreas?.length ? challenge.targetAreas.join('، ') : 'كل المناطق';
+  const canOpenDetails = Boolean(onOpenDetails);
+  function openDetails() {
+    onOpenDetails?.(challenge);
+  }
   async function join(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -1316,12 +1400,19 @@ function ChallengeCard({ challenge, token, admin, onDone }: { challenge: Challen
       setBusy(false);
     }
   }
-  async function remove() {
-    await api(`/challenges/${challenge.id}`, { method: 'DELETE' }, token);
-    onDone();
-  }
   return (
-    <article className="item-card">
+    <article
+      className={`item-card ${canOpenDetails ? 'idea-card-clickable' : ''}`}
+      role={canOpenDetails ? 'button' : undefined}
+      tabIndex={canOpenDetails ? 0 : undefined}
+      onClick={canOpenDetails ? openDetails : undefined}
+      onKeyDown={canOpenDetails ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openDetails();
+        }
+      } : undefined}
+    >
       {challenge.image && <div className="challenge-card-image"><img src={challenge.image} alt="" /></div>}
       <h3>{challenge.title}</h3>
       <span className={`badge challenge-status ${challenge.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}`}>{challengeDisplayStatus(challenge.status)}</span>
@@ -1366,8 +1457,84 @@ function ChallengeCard({ challenge, token, admin, onDone }: { challenge: Challen
         </div>
       </form>}
       {message && <p className="error">{message}</p>}
-      {admin && <button className="btn danger" onClick={remove}>حذف</button>}
     </article>
+  );
+}
+
+function ChallengeDetailsModal({ challenge, token, onDone, onClose }: { challenge: Challenge; token: string; onDone: () => Promise<void>; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const targetAreasText = challenge.targetAreas?.length ? challenge.targetAreas.join('، ') : 'كل المناطق';
+  const participants = challenge._count?.participations ?? challenge.participants;
+  const deadline = new Date(challenge.deadline);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
+
+  async function remove() {
+    setBusy(true);
+    try {
+      await api(`/challenges/${challenge.id}`, { method: 'DELETE' }, token);
+      await onDone();
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="idea-detail-backdrop" role="presentation" onClick={onClose}>
+      <section className="idea-detail-modal" role="dialog" aria-modal="true" aria-labelledby="challenge-detail-title" onClick={(event) => event.stopPropagation()}>
+        <div className="idea-detail-header">
+          <div>
+            <span className={`badge ${challenge.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}`}>{challengeDisplayStatus(challenge.status)}</span>
+            <h2 id="challenge-detail-title">{challenge.title}</h2>
+            <p className="muted">تحدي رقم #{challenge.id}</p>
+          </div>
+          <button className="idea-detail-close" type="button" onClick={onClose} aria-label="إغلاق">×</button>
+        </div>
+        {challenge.image && <div className="challenge-detail-image"><img src={challenge.image} alt="" /></div>}
+        <div className="idea-detail-body">
+          <div className="idea-detail-grid">
+            <div>
+              <span>الفئة</span>
+              <strong>{challenge.category}</strong>
+            </div>
+            <div>
+              <span>النقاط</span>
+              <strong>{challenge.reward}</strong>
+            </div>
+            <div>
+              <span>المشاركون</span>
+              <strong>{participants}</strong>
+            </div>
+            <div>
+              <span>الموعد النهائي</span>
+              <strong>{deadline.toLocaleDateString('ar-EG')}</strong>
+            </div>
+            <div>
+              <span>المكان</span>
+              <strong>{challenge.location || '-'}</strong>
+            </div>
+            <div>
+              <span>النطاق</span>
+              <strong>{targetAreasText}</strong>
+            </div>
+          </div>
+          <div className="idea-detail-description">
+            <span>وصف التحدي</span>
+            <p>{challenge.description}</p>
+          </div>
+        </div>
+        <div className="idea-detail-actions">
+          <button className="btn danger" type="button" disabled={busy} onClick={remove}>{busy ? 'جار الحذف...' : 'حذف التحدي'}</button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -1399,7 +1566,9 @@ function rejectedComplaintDaysLeft(complaint: Complaint) {
 function ComplaintsPage({ token, admin, viewOnly = false, centerApproval = false }: { token: string; admin: boolean; viewOnly?: boolean; centerApproval?: boolean }) {
   const { items: complaints, load, page, totalPages, setPage } = usePaginatedData<Complaint>('/complaints', token, 20);
   const [message, setMessage] = useState('');
+  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
   const readOnly = admin || viewOnly || centerApproval;
+  const canOpenComplaintDetails = admin || centerApproval;
   const splitRejected = !admin && !centerApproval;
   const rejectedComplaints = splitRejected ? complaints.filter(isRejectedComplaint) : [];
   const activeComplaints = splitRejected ? complaints.filter((complaint) => !isRejectedComplaint(complaint)) : complaints;
@@ -1427,7 +1596,7 @@ function ComplaintsPage({ token, admin, viewOnly = false, centerApproval = false
       </form>}
       {message && <p className={message.startsWith('تم ') ? 'muted' : 'error'}>{message}</p>}
       <div className="grid cards" style={{ marginTop: 16 }}>
-        {activeComplaints.map((complaint) => <ComplaintCard key={complaint.id} complaint={complaint} token={token} admin={admin} centerApproval={centerApproval} onDone={load} />)}
+        {activeComplaints.map((complaint) => <ComplaintCard key={complaint.id} complaint={complaint} admin={admin} centerApproval={centerApproval} onOpenDetails={canOpenComplaintDetails ? setSelectedComplaint : undefined} />)}
         {activeComplaints.length === 0 && <EmptyState title="لا توجد شكاوى للعرض" detail={readOnly ? 'ستظهر الطلبات عند وصولها أو اعتمادها.' : 'يمكنك إرسال شكوى أو مقترح من النموذج بالأعلى.'} />}
       </div>
       {rejectedComplaints.length > 0 && <section className="panel rejected-complaints-panel">
@@ -1440,36 +1609,39 @@ function ComplaintsPage({ token, admin, viewOnly = false, centerApproval = false
             <ComplaintCard
               key={complaint.id}
               complaint={complaint}
-              token={token}
               admin={admin}
               centerApproval={centerApproval}
-              onDone={load}
               rejectedNote={`سيختفي خلال ${rejectedComplaintDaysLeft(complaint)} يوم`}
             />
           ))}
         </div>
       </section>}
       <PaginationControls page={page} totalPages={totalPages} setPage={setPage} />
+      {selectedComplaint && <ComplaintDetailsModal complaint={selectedComplaint} token={token} onDone={load} onClose={() => setSelectedComplaint(null)} />}
     </>
   );
 }
 
-function ComplaintCard({ complaint, token, admin, centerApproval, onDone, rejectedNote }: { complaint: Complaint; token: string; admin: boolean; centerApproval?: boolean; onDone: () => void; rejectedNote?: string }) {
-  async function progress(data: { status?: string; showProgress?: boolean }) {
-    await api(`/complaints/${complaint.id}/progress`, { method: 'PATCH', body: JSON.stringify(data) }, token);
-    onDone();
-  }
-  async function review(status: 'ACTIVE' | 'REJECTED') {
-    await api(`/complaints/${complaint.id}/center-status`, { method: 'PATCH', body: JSON.stringify({ status }) }, token);
-    onDone();
-  }
-  const canManage = admin || centerApproval;
-  const canReview = canManage && complaint.centerReviewStatus === 'PENDING';
-  const canUpdateProgress = canManage && (complaint.centerReviewStatus === 'APPROVED' || !complaint.centerReviewStatus);
+function ComplaintCard({ complaint, admin, centerApproval, rejectedNote, onOpenDetails }: { complaint: Complaint; admin: boolean; centerApproval?: boolean; rejectedNote?: string; onOpenDetails?: (complaint: Complaint) => void }) {
   const centerName = complaint.center?.name || 'غير محدد';
   const centerArea = complaint.center?.location || 'غير محددة';
+  const canOpenDetails = Boolean(onOpenDetails);
+  function openDetails() {
+    onOpenDetails?.(complaint);
+  }
   return (
-    <article className="item-card">
+    <article
+      className={`item-card ${canOpenDetails ? 'idea-card-clickable' : ''}`}
+      role={canOpenDetails ? 'button' : undefined}
+      tabIndex={canOpenDetails ? 0 : undefined}
+      onClick={canOpenDetails ? openDetails : undefined}
+      onKeyDown={canOpenDetails ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openDetails();
+        }
+      } : undefined}
+    >
       <h3>{complaint.title}</h3>
       <p className="muted">{complaint.user?.name || 'مستخدم'} | {complaint.type}</p>
       <p className="muted complaint-center-meta">المركز: {centerName} | المنطقة: {centerArea}</p>
@@ -1481,21 +1653,118 @@ function ComplaintCard({ complaint, token, admin, centerApproval, onDone, reject
         { title: complaintStatusLabel(complaint.status), detail: complaint.resolvedAt ? new Date(complaint.resolvedAt).toLocaleDateString('ar-EG') : complaint.rejectedAt ? new Date(complaint.rejectedAt).toLocaleDateString('ar-EG') : 'قيد المتابعة', tone: complaint.status === 'REJECTED' ? 'danger' : complaint.status === 'RESOLVED' ? 'success' : 'info' }
       ]} />
       {rejectedNote && <p className="muted rejected-complaint-note">{rejectedNote}</p>}
-      {canReview && <div className="inline-actions" style={{ marginTop: 10 }}>
-        <button className="btn primary" type="button" onClick={() => review('ACTIVE')}>قبول وبدء المعالجة</button>
-        <button className="btn danger" type="button" onClick={() => review('REJECTED')}>رفض</button>
-      </div>}
-      {canUpdateProgress && <div className="grid" style={{ marginTop: 10 }}>
-        <select className="select" value={complaint.status} onChange={(e) => progress({ status: e.target.value })}>
-          <option value="PENDING">قيد المعالجة</option>
-          <option value="RESOLVED">تم الحل</option>
-          <option value="REJECTED">مرفوضة</option>
-        </select>
-        <button className={complaint.showProgress ? 'btn primary' : 'btn'} type="button" onClick={() => progress({ showProgress: !complaint.showProgress })}>
-          {complaint.showProgress ? 'ظاهر للمستخدم' : 'مخفي عن المستخدم'}
-        </button>
-      </div>}
     </article>
+  );
+}
+
+function ComplaintDetailsModal({ complaint, token, onDone, onClose }: { complaint: Complaint; token: string; onDone: () => Promise<void>; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [progressStatus, setProgressStatus] = useState(complaint.status);
+  const canReview = complaint.centerReviewStatus === 'PENDING';
+  const canUpdateProgress = complaint.centerReviewStatus === 'APPROVED' || !complaint.centerReviewStatus;
+  const centerName = complaint.center?.name || 'غير محدد';
+  const centerArea = complaint.center?.location || 'غير محددة';
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
+
+  async function progress(data: { status?: string; showProgress?: boolean }) {
+    setBusy(true);
+    try {
+      await api(`/complaints/${complaint.id}/progress`, { method: 'PATCH', body: JSON.stringify(data) }, token);
+      await onDone();
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function review(status: 'ACTIVE' | 'REJECTED') {
+    setBusy(true);
+    try {
+      await api(`/complaints/${complaint.id}/center-status`, { method: 'PATCH', body: JSON.stringify({ status }) }, token);
+      await onDone();
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="idea-detail-backdrop" role="presentation" onClick={onClose}>
+      <section className="idea-detail-modal" role="dialog" aria-modal="true" aria-labelledby="complaint-detail-title" onClick={(event) => event.stopPropagation()}>
+        <div className="idea-detail-header">
+          <div>
+            <span className={`badge ${complaint.status === 'REJECTED' ? 'badge-error' : complaint.status === 'RESOLVED' ? 'badge-success' : 'badge-info'}`}>{complaintReviewLabel(complaint)}</span>
+            <h2 id="complaint-detail-title">{complaint.title}</h2>
+            <p className="muted">طلب رقم #{complaint.id}</p>
+          </div>
+          <button className="idea-detail-close" type="button" onClick={onClose} aria-label="إغلاق">×</button>
+        </div>
+        <div className="idea-detail-body">
+          <div className="idea-detail-grid">
+            <div>
+              <span>صاحب الطلب</span>
+              <strong>{complaint.user?.name || 'مستخدم'}</strong>
+            </div>
+            <div>
+              <span>النوع</span>
+              <strong>{complaint.type}</strong>
+            </div>
+            <div>
+              <span>المركز</span>
+              <strong>{centerName}</strong>
+            </div>
+            <div>
+              <span>المنطقة</span>
+              <strong>{centerArea}</strong>
+            </div>
+            <div>
+              <span>الحالة</span>
+              <strong>{complaintStatusLabel(complaint.status)}</strong>
+            </div>
+            <div>
+              <span>تاريخ الإرسال</span>
+              <strong>{complaint.createdAt ? new Date(complaint.createdAt).toLocaleDateString('ar-EG') : '-'}</strong>
+            </div>
+            <div>
+              <span>الظهور للمستخدم</span>
+              <strong>{complaint.showProgress ? 'ظاهر' : 'مخفي'}</strong>
+            </div>
+          </div>
+          <div className="idea-detail-description">
+            <span>التفاصيل</span>
+            <p>{complaint.description}</p>
+          </div>
+        </div>
+        <div className="idea-detail-actions complaint-detail-actions">
+          {canReview && (
+            <>
+              <button className="btn primary" type="button" disabled={busy} onClick={() => review('ACTIVE')}>قبول وبدء المعالجة</button>
+              <button className="btn danger" type="button" disabled={busy} onClick={() => review('REJECTED')}>رفض</button>
+            </>
+          )}
+          {canUpdateProgress && (
+            <>
+              <select className="select complaint-detail-select" value={progressStatus} disabled={busy} onChange={(event) => setProgressStatus(event.target.value)}>
+                <option value="PENDING">قيد المعالجة</option>
+                <option value="RESOLVED">تم الحل</option>
+                <option value="REJECTED">مرفوضة</option>
+              </select>
+              <button className="btn primary" type="button" disabled={busy || progressStatus === complaint.status} onClick={() => progress({ status: progressStatus })}>حفظ الحالة</button>
+              <button className={complaint.showProgress ? 'btn primary' : 'btn'} type="button" disabled={busy} onClick={() => progress({ showProgress: !complaint.showProgress })}>
+                {complaint.showProgress ? 'إخفاء عن المستخدم' : 'إظهار للمستخدم'}
+              </button>
+            </>
+          )}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -1839,6 +2108,7 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
   const [busy, setBusy] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [activeDirectory, setActiveDirectory] = useState<'normal' | 'centers'>('normal');
+  const createNameRef = useRef<HTMLInputElement>(null);
   const activePage = activeDirectory === 'normal' ? normalUsers : centerAccounts;
   const users = activePage.items;
   const activeRole: Role = activeDirectory === 'normal' ? 'USER' : 'CENTER_MANAGER';
@@ -1850,6 +2120,16 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
     const value = num(form, 'centerId');
     return value || null;
   }
+
+  useEffect(() => {
+    if (!showCreate) return;
+    createNameRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowCreate(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [showCreate]);
 
   function loadDirectories() {
     return Promise.all([normalUsers.load(), centerAccounts.load()]).then(() => undefined);
@@ -1996,17 +2276,28 @@ function UsersAdmin({ token, currentUser }: { token: string; currentUser: User }
           <span><strong>{activeInactiveCount}</strong> معطل في الصفحة</span>
         </div>
       </div>
-      {showCreate && <form className="panel form-grid" onSubmit={create} style={{ marginTop: 16 }}>
-        <input className="input" name="name" placeholder="الاسم" required />
-        <input className="input" name="email" type="email" placeholder="البريد" required />
-        <input className="input" name="password" type="password" minLength={6} maxLength={128} placeholder="كلمة مرور مؤقتة (6 أحرف على الأقل)" required />
-        {hasUserPoints(createRole) && <input className="input" name="points" type="number" placeholder="النقاط" />}
-        <select className="select" name="role" value={createRole} onChange={(e) => setCreateRole(e.target.value as Role)}>
-          {allowedRoles.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
-        <CenterSelect centers={centers} required={createRole === 'CENTER_MANAGER'} />
-        <button className="btn primary" disabled={busy}>إضافة</button>
-      </form>}
+      {showCreate && <div className="account-create-backdrop" role="presentation" onClick={() => setShowCreate(false)}>
+        <section className="account-create-modal" role="dialog" aria-modal="true" aria-labelledby="account-create-title" onClick={(event) => event.stopPropagation()}>
+          <div className="account-create-header">
+            <div>
+              <h2 id="account-create-title">{activeDirectory === 'normal' ? 'إضافة مستخدم' : 'إضافة حساب مركز'}</h2>
+              <p className="muted">{activeDirectory === 'normal' ? 'أنشئ حساب عضو جديد واربطه بالمركز المناسب عند الحاجة.' : 'أنشئ حساب مسؤول مركز واربطه بالمركز الذي سيديره.'}</p>
+            </div>
+            <button className="account-create-close" type="button" onClick={() => setShowCreate(false)} aria-label="إغلاق">×</button>
+          </div>
+          <form className="form-grid account-create-form" onSubmit={create}>
+            <input ref={createNameRef} className="input" name="name" placeholder="الاسم" required />
+            <input className="input" name="email" type="email" placeholder="البريد" required />
+            <input className="input" name="password" type="password" minLength={6} maxLength={128} placeholder="كلمة مرور مؤقتة (6 أحرف على الأقل)" required />
+            {hasUserPoints(createRole) && <input className="input" name="points" type="number" placeholder="النقاط" />}
+            <select className="select" name="role" value={createRole} onChange={(e) => setCreateRole(e.target.value as Role)}>
+              {allowedRoles.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+            <CenterSelect centers={centers} required={createRole === 'CENTER_MANAGER'} />
+            <button className="btn primary" disabled={busy}>إضافة</button>
+          </form>
+        </section>
+      </div>}
       {message && <p className="error">{message}</p>}
       {editing && <form key={editing.id} className="panel form-grid" onSubmit={update} style={{ marginTop: 16 }}>
         <h3>تعديل مستخدم</h3>
