@@ -3,7 +3,7 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 
 type CenterAccount = {
-  number: number;
+  number?: number;
   name: string;
   location: string;
   email: string;
@@ -11,42 +11,80 @@ type CenterAccount = {
   role: "CENTER_MANAGER";
 };
 
-const expectedCenterCount = 146;
+const requiredHeaders = ["Center Name", "Location", "Email", "Password", "Role"] as const;
 
-function readSeedBlock(source: string, constName: string) {
-  const marker = `const ${constName} = \``;
-  const start = source.indexOf(marker);
-  if (start < 0) throw new Error(`Could not find ${constName} in seed.ts`);
-  const contentStart = start + marker.length;
-  const end = source.indexOf("`", contentStart);
-  if (end < 0) throw new Error(`Could not find the end of ${constName} in seed.ts`);
-  return source.slice(contentStart, end).trim();
+function cellText(row: ExcelJS.Row, columnNumber: number): string {
+  return row.getCell(columnNumber).text.trim();
 }
 
-function parseCenterAccounts(seedPath: string): CenterAccount[] {
-  const source = fs.readFileSync(seedPath, "utf8");
-  const rows = [readSeedBlock(source, "centerRows"), readSeedBlock(source, "additionalCenterRows")]
-    .filter(Boolean)
-    .join("\n")
-    .split("\n")
-    .map((row) => row.trim())
-    .filter(Boolean);
+function headerColumns(sheet: ExcelJS.Worksheet): Map<string, number> {
+  const headers = new Map<string, number>();
+  sheet.getRow(1).eachCell((cell, columnNumber) => {
+    const header = cell.text.trim();
+    if (header) headers.set(header, columnNumber);
+  });
+  return headers;
+}
 
-  if (rows.length !== expectedCenterCount) {
-    throw new Error(`Expected ${expectedCenterCount} centers, found ${rows.length}.`);
+function requiredColumn(headers: Map<string, number>, name: string): number {
+  const column = headers.get(name);
+  if (!column) throw new Error(`center-accounts.xlsx is missing the "${name}" column`);
+  return column;
+}
+
+async function readWorkbookAccounts(workbookPath: string): Promise<CenterAccount[]> {
+  if (!fs.existsSync(workbookPath)) {
+    throw new Error(`Missing center accounts workbook: ${workbookPath}`);
   }
 
-  return rows.map((row, index) => {
-    const [name, location] = row.split("|");
-    return {
-      number: index + 1,
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(workbookPath);
+  const sheet = workbook.worksheets[0];
+  if (!sheet) throw new Error("center-accounts.xlsx does not contain a worksheet");
+
+  const headers = headerColumns(sheet);
+  const columns = {
+    number: headers.get("No."),
+    name: requiredColumn(headers, "Center Name"),
+    location: requiredColumn(headers, "Location"),
+    email: requiredColumn(headers, "Email"),
+    password: requiredColumn(headers, "Password"),
+    role: requiredColumn(headers, "Role")
+  };
+  const accounts: CenterAccount[] = [];
+  const seenCenters = new Set<string>();
+  const seenEmails = new Set<string>();
+
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const name = cellText(row, columns.name);
+    const location = cellText(row, columns.location);
+    const email = cellText(row, columns.email).toLowerCase();
+    const password = cellText(row, columns.password);
+    const role = cellText(row, columns.role);
+    if (!name && !location && !email && !password && !role) return;
+    if (!name || !location || !email || !password) {
+      throw new Error(`center-accounts.xlsx row ${rowNumber} must include center name, location, email, and password`);
+    }
+    if (role !== "CENTER_MANAGER") {
+      throw new Error(`center-accounts.xlsx row ${rowNumber} must use CENTER_MANAGER role`);
+    }
+    if (seenCenters.has(name)) throw new Error(`Duplicate center name in center-accounts.xlsx: ${name}`);
+    if (seenEmails.has(email)) throw new Error(`Duplicate center email in center-accounts.xlsx: ${email}`);
+    seenCenters.add(name);
+    seenEmails.add(email);
+    accounts.push({
+      number: columns.number ? Number(cellText(row, columns.number)) || accounts.length + 1 : accounts.length + 1,
       name,
       location,
-      email: `manager_${index + 1}@platform.com`,
-      password: "center123",
-      role: "CENTER_MANAGER"
-    };
+      email,
+      password,
+      role
+    });
   });
+
+  if (accounts.length === 0) throw new Error("center-accounts.xlsx does not contain any center accounts");
+  return accounts;
 }
 
 function safeCell(value: string) {
@@ -71,11 +109,14 @@ async function writeWorkbook(accounts: CenterAccount[], outputPath: string) {
     { header: "Role", key: "role", width: 20 }
   ];
 
-  for (const account of accounts) {
+  for (const [index, account] of accounts.entries()) {
     sheet.addRow({
-      ...account,
+      number: account.number ?? index + 1,
       name: safeCell(account.name),
-      location: safeCell(account.location)
+      location: safeCell(account.location),
+      email: account.email,
+      password: account.password,
+      role: account.role
     });
   }
 
@@ -100,17 +141,24 @@ async function writeWorkbook(accounts: CenterAccount[], outputPath: string) {
     });
   });
 
+  for (const header of requiredHeaders) {
+    if (!sheet.getRow(1).values?.toString().includes(header)) {
+      throw new Error(`Failed to write required "${header}" column`);
+    }
+  }
+
   await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
   await workbook.xlsx.writeFile(outputPath);
 }
 
 async function main() {
   const apiDir = path.resolve(__dirname, "..");
-  const seedPath = path.join(apiDir, "src", "seed.ts");
-  const outputPath = process.argv[2]
-    ? path.resolve(process.cwd(), process.argv[2])
-    : path.resolve(apiDir, "..", "..", "center-accounts.xlsx");
-  const accounts = parseCenterAccounts(seedPath);
+  const defaultWorkbookPath = path.resolve(apiDir, "..", "..", "center-accounts.xlsx");
+  const sourcePath = process.env.CENTER_ACCOUNTS_XLSX
+    ? path.resolve(process.cwd(), process.env.CENTER_ACCOUNTS_XLSX)
+    : defaultWorkbookPath;
+  const outputPath = process.argv[2] ? path.resolve(process.cwd(), process.argv[2]) : sourcePath;
+  const accounts = await readWorkbookAccounts(sourcePath);
 
   await writeWorkbook(accounts, outputPath);
   console.log(`Wrote ${accounts.length} center accounts to ${outputPath}`);

@@ -200,7 +200,7 @@ pnpm --filter @qys/web build
 pnpm build
 ```
 
-Generate center account workbook:
+Validate and format the center account workbook:
 
 ```bash
 pnpm --filter @qys/api generate:center-accounts
